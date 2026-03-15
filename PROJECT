@@ -6,6 +6,10 @@ cliVersion: 4.13.0
 domain: nous.ai
 layout:
 - go.kubebuilder.io/v4
+plugins:
+  helm.kubebuilder.io/v2-alpha:
+    manifests: dist/install.yaml
+    output: charts
 projectName: k8s-operator-hermes-agent
 repo: github.com/xmbshwll/k8s-operator-hermes-agent
 resources:

@@ -1,0 +1,41 @@
+## String to partially override chart.fullname template (will maintain the release name)
+##
+# nameOverride: ""
+
+## String to fully override chart.fullname template
+##
+# fullnameOverride: ""
+
+## Controller image settings
+##
+image:
+  repository: controller
+  tag: latest
+  pullPolicy: IfNotPresent
+
+## Leader election should stay enabled for clustered installs.
+##
+leaderElection:
+  enabled: true
+
+## Service account used by the controller manager.
+##
+serviceAccount:
+  create: true
+  name: ""
+
+## Resource requests and limits for the controller manager.
+##
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+## Controller metrics endpoint.
+## Enable to expose /metrics endpoint with RBAC protection.
+##
+metrics:
+  enabled: true

@@ -19,33 +19,25 @@
 make docker-build docker-push IMG=<some-registry>/k8s-operator-hermes-agent:tag
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
-
-**Install the CRDs into the cluster:**
+**Install the operator with Helm:**
 
 ```sh
-make install
+make helm-deploy IMG=<some-registry>/k8s-operator-hermes-agent:tag
 ```
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
-
-```sh
-make deploy IMG=<some-registry>/k8s-operator-hermes-agent:tag
-```
+This installs the CRD, controller deployment, RBAC, and metrics service into the
+`k8s-operator-hermes-agent-system` namespace by default. Override the namespace
+with `HELM_NAMESPACE=<namespace>` when needed.
 
 > **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
 privileges or be logged in as admin.
 
 **Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+You can apply the samples (examples) from `config/samples/`:
 
 ```sh
 kubectl apply -k config/samples/
 ```
-
->**NOTE**: Ensure that the samples has default values to test it out.
 
 ### To Uninstall
 **Delete the instances (CRs) from the cluster:**
@@ -54,17 +46,15 @@ kubectl apply -k config/samples/
 kubectl delete -k config/samples/
 ```
 
-**Delete the APIs(CRDs) from the cluster:**
+**Uninstall the Helm release:**
 
 ```sh
-make uninstall
+make helm-uninstall
 ```
 
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
+CRDs are kept on uninstall so existing custom resources are not removed unexpectedly.
+Delete `charts/chart/crds/hermesagents.hermes.nous.ai.yaml` manually only when you
+intend to remove the API from the cluster.
 
 ## Project Distribution
 
@@ -94,21 +84,30 @@ kubectl apply -f https://raw.githubusercontent.com/<org>/k8s-operator-hermes-age
 
 ### By providing a Helm Chart
 
-1. Build the chart using the optional helm plugin
+The repository includes a Helm chart under `charts/chart/`.
+
+**Install directly from the chart:**
 
 ```sh
-kubebuilder edit --plugins=helm/v2-alpha
+helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
+  --namespace k8s-operator-hermes-agent-system \
+  --create-namespace \
+  --set image.repository=<some-registry>/k8s-operator-hermes-agent \
+  --set image.tag=<tag>
 ```
 
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
+**Supported values:**
+- `image.repository`
+- `image.tag`
+- `image.pullPolicy`
+- `resources`
+- `leaderElection.enabled`
+- `serviceAccount.create`
+- `serviceAccount.name`
+- `metrics.enabled`
 
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
+If you regenerate the chart with `kubebuilder edit --plugins=helm/v2-alpha --output-dir=charts`,
+re-apply any manual chart customizations afterwards.
 
 ## Contributing
 // TODO(user): Add detailed information on how you would like others to contribute to this project

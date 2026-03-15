@@ -1,0 +1,15 @@
+apiVersion: v2
+name: k8s-operator-hermes-agent
+description: Helm chart for installing the Hermes Kubernetes operator
+type: application
+
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - hermes
+  - kubernetes
+  - operator
+
+annotations:
+  kubebuilder.io/generated-by: kubebuilder
