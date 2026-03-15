@@ -35,7 +35,16 @@ import (
 )
 
 const (
-	conditionTypeConfigReady = "ConfigReady"
+	conditionTypeConfigReady      = "ConfigReady"
+	conditionTypePersistenceReady = "PersistenceReady"
+	conditionTypeWorkloadReady    = "WorkloadReady"
+	conditionTypeReady            = "Ready"
+	phaseConfigError              = "ConfigError"
+	phaseStoragePending           = "StoragePending"
+	phaseStorageError             = "StorageError"
+	phaseWorkloadPending          = "WorkloadPending"
+	phaseWorkloadError            = "WorkloadError"
+	phaseReady                    = "Ready"
 )
 
 // HermesAgentReconciler reconciles a HermesAgent object.
@@ -63,8 +72,13 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	plan, err := buildConfigPlan(agent)
 	if err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
-			setStatusCondition(status, metav1.ConditionFalse, "InvalidConfig", err.Error())
-			status.Phase = "ConfigError"
+			status.ReadyReplicas = 0
+			status.PersistenceBound = false
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "InvalidConfig", err.Error())
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is valid")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is valid")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "InvalidConfig", "HermesAgent configuration is invalid")
+			status.Phase = phaseConfigError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("build config plan: %w (status update failed: %v)", err, statusErr)
 		}
@@ -77,8 +91,13 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		if err := r.reconcileInlineConfigMap(ctx, agent, file); err != nil {
 			if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
-				setStatusCondition(status, metav1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
-				status.Phase = "ConfigError"
+				status.ReadyReplicas = 0
+				status.PersistenceBound = false
+				setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
+				setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is reconciled")
+				setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is reconciled")
+				setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ConfigMapReconcileFailed", "HermesAgent configuration resources could not be reconciled")
+				status.Phase = phaseConfigError
 			}); statusErr != nil {
 				return ctrl.Result{}, fmt.Errorf("reconcile configmap: %w (status update failed: %v)", err, statusErr)
 			}
@@ -87,11 +106,31 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			status.PersistenceBound = false
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", err.Error())
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "WaitingForPersistence", "Workload is waiting for persistence to reconcile")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", "HermesAgent persistence could not be reconciled")
+			status.Phase = phaseStorageError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile pvc: %w (status update failed: %v)", err, statusErr)
+		}
 		return ctrl.Result{}, err
 	}
 
 	inputs := buildPodTemplateInputs(agent, plan)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "StatefulSetReconcileFailed", err.Error())
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "StatefulSetReconcileFailed", "HermesAgent workload could not be reconciled")
+			status.Phase = phaseWorkloadError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile statefulset: %w (status update failed: %v)", err, statusErr)
+		}
 		return ctrl.Result{}, err
 	}
 
@@ -103,10 +142,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"envFrom", len(inputs.EnvFrom),
 	)
 
-	if err := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
-		setStatusCondition(status, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
-		status.Phase = "ConfigReady"
-	}); err != nil {
+	if err := r.reconcileStatus(ctx, agent); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -191,14 +227,165 @@ func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1
 	return r.Status().Patch(ctx, latest, client.MergeFrom(base))
 }
 
-func setStatusCondition(status *hermesv1alpha1.HermesAgentStatus, conditionStatus metav1.ConditionStatus, reason, message string) {
+func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+	statusView, err := r.readStatusView(ctx, agent)
+	if err != nil {
+		return err
+	}
+
+	return r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		status.ReadyReplicas = statusView.readyReplicas
+		status.PersistenceBound = statusView.persistenceBound
+		setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+		setCondition(status, conditionTypePersistenceReady, statusView.persistenceConditionStatus, statusView.persistenceReason, statusView.persistenceMessage)
+		setCondition(status, conditionTypeWorkloadReady, statusView.workloadConditionStatus, statusView.workloadReason, statusView.workloadMessage)
+		setCondition(status, conditionTypeReady, statusView.readyConditionStatus, statusView.readyReason, statusView.readyMessage)
+		status.Phase = statusView.phase
+	})
+}
+
+type statusView struct {
+	readyReplicas              int32
+	persistenceBound           bool
+	persistenceConditionStatus metav1.ConditionStatus
+	persistenceReason          string
+	persistenceMessage         string
+	workloadConditionStatus    metav1.ConditionStatus
+	workloadReason             string
+	workloadMessage            string
+	readyConditionStatus       metav1.ConditionStatus
+	readyReason                string
+	readyMessage               string
+	phase                      string
+}
+
+func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *hermesv1alpha1.HermesAgent) (statusView, error) {
+	view := statusView{}
+
+	if persistenceEnabled(agent) {
+		persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
+		pvcKey := client.ObjectKey{Name: persistentVolumeClaimName(agent.Name), Namespace: agent.Namespace}
+		if err := r.Get(ctx, pvcKey, persistentVolumeClaim); err != nil {
+			if apierrors.IsNotFound(err) {
+				view.persistenceConditionStatus = metav1.ConditionFalse
+				view.persistenceReason = "PersistentVolumeClaimMissing"
+				view.persistenceMessage = fmt.Sprintf("PersistentVolumeClaim %s has not been created yet", pvcKey.Name)
+				view.workloadConditionStatus = metav1.ConditionFalse
+				view.workloadReason = "WaitingForPersistence"
+				view.workloadMessage = "Workload is waiting for persistent storage"
+				view.readyConditionStatus = metav1.ConditionFalse
+				view.readyReason = view.persistenceReason
+				view.readyMessage = view.persistenceMessage
+				view.phase = phaseStoragePending
+				return view, nil
+			}
+			return statusView{}, err
+		}
+
+		if persistentVolumeClaim.Status.Phase == corev1.ClaimBound {
+			view.persistenceBound = true
+			view.persistenceConditionStatus = metav1.ConditionTrue
+			view.persistenceReason = "PersistentVolumeClaimBound"
+			view.persistenceMessage = fmt.Sprintf("PersistentVolumeClaim %s is bound", persistentVolumeClaim.Name)
+		} else {
+			view.persistenceConditionStatus = metav1.ConditionFalse
+			view.persistenceReason = persistenceReason(persistentVolumeClaim.Status.Phase)
+			view.persistenceMessage = persistenceMessage(persistentVolumeClaim)
+			view.workloadConditionStatus = metav1.ConditionFalse
+			view.workloadReason = "WaitingForPersistence"
+			view.workloadMessage = "Workload is waiting for persistent storage"
+			view.readyConditionStatus = metav1.ConditionFalse
+			view.readyReason = view.persistenceReason
+			view.readyMessage = view.persistenceMessage
+			view.phase = persistencePhase(persistentVolumeClaim.Status.Phase)
+			return view, nil
+		}
+	} else {
+		view.persistenceConditionStatus = metav1.ConditionTrue
+		view.persistenceReason = "PersistenceDisabled"
+		view.persistenceMessage = "Persistence is disabled; HermesAgent is using ephemeral storage"
+	}
+
+	statefulSet := &appsv1.StatefulSet{}
+	statefulSetKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
+	if err := r.Get(ctx, statefulSetKey, statefulSet); err != nil {
+		if apierrors.IsNotFound(err) {
+			view.workloadConditionStatus = metav1.ConditionFalse
+			view.workloadReason = "StatefulSetMissing"
+			view.workloadMessage = fmt.Sprintf("StatefulSet %s has not been created yet", statefulSetKey.Name)
+			view.readyConditionStatus = metav1.ConditionFalse
+			view.readyReason = view.workloadReason
+			view.readyMessage = view.workloadMessage
+			view.phase = phaseWorkloadPending
+			return view, nil
+		}
+		return statusView{}, err
+	}
+
+	view.readyReplicas = statefulSet.Status.ReadyReplicas
+	desiredReplicas := int32(1)
+	if statefulSet.Spec.Replicas != nil {
+		desiredReplicas = *statefulSet.Spec.Replicas
+	}
+
+	if statefulSet.Status.ReadyReplicas >= desiredReplicas && statefulSet.Status.ObservedGeneration >= statefulSet.Generation {
+		view.workloadConditionStatus = metav1.ConditionTrue
+		view.workloadReason = "StatefulSetReady"
+		view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
+		view.readyConditionStatus = metav1.ConditionTrue
+		view.readyReason = conditionTypeReady
+		view.readyMessage = "HermesAgent persistence and workload are ready"
+		view.phase = phaseReady
+		return view, nil
+	}
+
+	view.workloadConditionStatus = metav1.ConditionFalse
+	view.workloadReason = "StatefulSetProgressing"
+	view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
+	view.readyConditionStatus = metav1.ConditionFalse
+	view.readyReason = view.workloadReason
+	view.readyMessage = view.workloadMessage
+	view.phase = phaseWorkloadPending
+	return view, nil
+}
+
+func setCondition(status *hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason, message string) {
 	api.SetStatusCondition(&status.Conditions, metav1.Condition{
-		Type:               conditionTypeConfigReady,
+		Type:               conditionType,
 		Status:             conditionStatus,
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
 	})
+}
+
+func persistenceReason(phase corev1.PersistentVolumeClaimPhase) string {
+	switch phase {
+	case corev1.ClaimBound:
+		return "PersistentVolumeClaimBound"
+	case corev1.ClaimLost:
+		return "PersistentVolumeClaimLost"
+	default:
+		return "PersistentVolumeClaimPending"
+	}
+}
+
+func persistenceMessage(persistentVolumeClaim *corev1.PersistentVolumeClaim) string {
+	switch persistentVolumeClaim.Status.Phase {
+	case corev1.ClaimBound:
+		return fmt.Sprintf("PersistentVolumeClaim %s is bound", persistentVolumeClaim.Name)
+	case corev1.ClaimLost:
+		return fmt.Sprintf("PersistentVolumeClaim %s is lost", persistentVolumeClaim.Name)
+	default:
+		return fmt.Sprintf("PersistentVolumeClaim %s is waiting to bind", persistentVolumeClaim.Name)
+	}
+}
+
+func persistencePhase(phase corev1.PersistentVolumeClaimPhase) string {
+	if phase == corev1.ClaimLost {
+		return phaseStorageError
+	}
+	return phaseStoragePending
 }
 
 func countGeneratedFiles(files []resolvedConfigFile) int {

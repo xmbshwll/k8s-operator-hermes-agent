@@ -6,6 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -105,6 +106,28 @@ func requireExecProbe(t *testing.T, probe *corev1.Probe, commandParts ...string)
 			t.Fatalf("expected probe command %q to contain %q", probe.Exec.Command[2], part)
 		}
 	}
+}
+
+func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason string) {
+	t.Helper()
+
+	for _, condition := range status.Conditions {
+		if condition.Type != conditionType {
+			continue
+		}
+		if condition.Status != conditionStatus {
+			t.Fatalf("expected %s status %s, got %s", conditionType, conditionStatus, condition.Status)
+		}
+		if reason != "" && condition.Reason != reason {
+			t.Fatalf("expected %s reason %s, got %s", conditionType, reason, condition.Reason)
+		}
+		if condition.Message == "" {
+			t.Fatalf("expected %s message to be populated", conditionType)
+		}
+		return
+	}
+
+	t.Fatalf("expected condition %s", conditionType)
 }
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
