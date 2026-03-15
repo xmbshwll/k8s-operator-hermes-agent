@@ -147,8 +147,7 @@ type HermesAgentServiceSpec struct {
 // HermesAgentNetworkPolicySpec defines optional NetworkPolicy generation.
 type HermesAgentNetworkPolicySpec struct {
 	// enabled controls whether an egress-focused NetworkPolicy is created.
-	// +kubebuilder:default:=true
-	Enabled bool `json:"enabled,omitempty"`
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // HermesAgentSpec defines the desired state of HermesAgent.
@@ -202,6 +201,7 @@ type HermesAgentSpec struct {
 	Service HermesAgentServiceSpec `json:"service,omitempty"`
 
 	// networkPolicy controls optional NetworkPolicy generation.
+	// +kubebuilder:default:={enabled:false}
 	// +optional
 	NetworkPolicy HermesAgentNetworkPolicySpec `json:"networkPolicy,omitempty"`
 }

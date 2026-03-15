@@ -345,10 +345,11 @@ spec:
                 - gateway
                 type: string
               networkPolicy:
+                default:
+                  enabled: false
                 description: networkPolicy controls optional NetworkPolicy generation.
                 properties:
                   enabled:
-                    default: true
                     description: enabled controls whether an egress-focused NetworkPolicy
                       is created.
                     type: boolean

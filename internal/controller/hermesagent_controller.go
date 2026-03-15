@@ -22,6 +22,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	api "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -59,6 +60,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current HermesAgent config state toward the desired state.
@@ -148,6 +150,19 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "NetworkPolicyReconcileFailed", err.Error())
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "NetworkPolicyReconcileFailed", "HermesAgent network policy could not be reconciled")
+			status.Phase = phaseWorkloadError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile networkpolicy: %w (status update failed: %v)", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
 	log.Info("Reconciled HermesAgent config",
 		"name", agent.Name,
 		"generatedConfigMaps", countGeneratedFiles(plan.Files),
@@ -170,6 +185,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Service{}).
+		Owns(&networkingv1.NetworkPolicy{}).
 		Owns(&appsv1.StatefulSet{}).
 		Named("hermesagent").
 		Complete(r)
@@ -260,6 +276,40 @@ func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *her
 			service.Spec.Ports[0].NodePort = existingPorts[0].NodePort
 		}
 		return controllerutil.SetControllerReference(agent, service, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+	networkPolicy := &networkingv1.NetworkPolicy{}
+	networkPolicyKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
+	networkPolicyExists := true
+	if err := r.Get(ctx, networkPolicyKey, networkPolicy); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		networkPolicyExists = false
+	}
+
+	if !networkPolicyEnabled(agent) {
+		if !networkPolicyExists || !metav1.IsControlledBy(networkPolicy, agent) {
+			return nil
+		}
+		return r.Delete(ctx, networkPolicy)
+	}
+
+	if networkPolicyExists && !metav1.IsControlledBy(networkPolicy, agent) {
+		return fmt.Errorf("networkpolicy %s already exists and is not owned by HermesAgent %s", networkPolicy.Name, agent.Name)
+	}
+
+	desired := buildNetworkPolicy(agent)
+	networkPolicy.Namespace = desired.Namespace
+	networkPolicy.Name = desired.Name
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, networkPolicy, func() error {
+		networkPolicy.Labels = mergeStringMaps(networkPolicy.Labels, desired.Labels)
+		networkPolicy.Spec = desired.Spec
+		return controllerutil.SetControllerReference(agent, networkPolicy, r.Scheme)
 	})
 	return err
 }

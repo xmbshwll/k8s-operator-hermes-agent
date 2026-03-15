@@ -11,6 +11,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -31,6 +32,10 @@ const (
 	hermesRuntimeUID        = int64(10001)
 	hermesGatewayPIDFile    = "gateway.pid"
 	hermesGatewayStateFile  = "gateway_state.json"
+	networkPolicyDNSPort    = int32(53)
+	networkPolicyHTTPPort   = int32(80)
+	networkPolicyHTTPSPort  = int32(443)
+	networkPolicySSHPort    = int32(22)
 	startupFailureThreshold = int32(18)
 	readinessInitialDelay   = int32(5)
 	probePeriodSeconds      = int32(10)
@@ -211,6 +216,45 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 				TargetPort: intstr.FromInt32(port),
 				Protocol:   corev1.ProtocolTCP,
 			}},
+		},
+	}
+}
+
+func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent) *networkingv1.NetworkPolicy {
+	labels := resourceLabels(agent)
+	egress := []networkingv1.NetworkPolicyEgressRule{
+		{
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Protocol: protocolPtr(corev1.ProtocolUDP), Port: portIntOrString(networkPolicyDNSPort)},
+				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyDNSPort)},
+			},
+		},
+		{
+			Ports: []networkingv1.NetworkPolicyPort{
+				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyHTTPPort)},
+				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyHTTPSPort)},
+			},
+		},
+	}
+	if terminalBackend(agent) == "ssh" {
+		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
+			Ports: []networkingv1.NetworkPolicyPort{{
+				Protocol: protocolPtr(corev1.ProtocolTCP),
+				Port:     portIntOrString(networkPolicySSHPort),
+			}},
+		})
+	}
+
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name,
+			Namespace: agent.Namespace,
+			Labels:    labels,
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: labels},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeEgress},
+			Egress:      egress,
 		},
 	}
 }
@@ -514,6 +558,22 @@ func shellQuote(value string) string {
 	return fmt.Sprintf("%q", value)
 }
 
+func terminalBackend(agent *hermesv1alpha1.HermesAgent) string {
+	if agent.Spec.Terminal.Backend == "" {
+		return "local"
+	}
+	return agent.Spec.Terminal.Backend
+}
+
+func protocolPtr(protocol corev1.Protocol) *corev1.Protocol {
+	return &protocol
+}
+
+func portIntOrString(port int32) *intstr.IntOrString {
+	value := intstr.FromInt32(port)
+	return &value
+}
+
 func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {
 	if persistenceEnabled(agent) {
 		return corev1.Volume{
@@ -544,6 +604,13 @@ func persistenceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
 		return true
 	}
 	return *agent.Spec.Storage.Persistence.Enabled
+}
+
+func networkPolicyEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+	if agent.Spec.NetworkPolicy.Enabled == nil {
+		return false
+	}
+	return *agent.Spec.NetworkPolicy.Enabled
 }
 
 func serviceEnabled(agent *hermesv1alpha1.HermesAgent) bool {

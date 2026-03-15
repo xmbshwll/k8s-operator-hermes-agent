@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -129,6 +130,22 @@ func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatu
 	}
 
 	t.Fatalf("expected condition %s", conditionType)
+}
+
+func requireNetworkPolicyPort(t *testing.T, ports []networkingv1.NetworkPolicyPort, protocol corev1.Protocol, port int32) {
+	t.Helper()
+
+	for _, policyPort := range ports {
+		if policyPort.Protocol == nil || *policyPort.Protocol != protocol {
+			continue
+		}
+		if policyPort.Port == nil || policyPort.Port.IntVal != port {
+			continue
+		}
+		return
+	}
+
+	t.Fatalf("expected NetworkPolicy port %s/%d in %+v", protocol, port, ports)
 }
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
@@ -344,6 +361,77 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	if service.Spec.Ports[0].TargetPort.IntVal != 9443 {
 		t.Fatalf("expected Service targetPort 9443, got %+v", service.Spec.Ports[0].TargetPort)
 	}
+}
+
+func TestNetworkPolicyEnabledDefaultsToFalse(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	if networkPolicyEnabled(agent) {
+		t.Fatal("expected NetworkPolicy to default to disabled")
+	}
+
+	enabled := true
+	agent.Spec.NetworkPolicy.Enabled = &enabled
+	if !networkPolicyEnabled(agent) {
+		t.Fatal("expected NetworkPolicy helper to report explicit enablement")
+	}
+}
+
+func TestBuildNetworkPolicyUsesEgressOnlyDefaults(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+
+	networkPolicy := buildNetworkPolicy(agent)
+	if networkPolicy.Name != testAgentName {
+		t.Fatalf("expected NetworkPolicy name %q, got %q", testAgentName, networkPolicy.Name)
+	}
+	if networkPolicy.Namespace != testNamespace {
+		t.Fatalf("expected NetworkPolicy namespace %s, got %q", testNamespace, networkPolicy.Namespace)
+	}
+	if len(networkPolicy.Spec.PolicyTypes) != 1 || networkPolicy.Spec.PolicyTypes[0] != networkingv1.PolicyTypeEgress {
+		t.Fatalf("expected egress-only policy type, got %+v", networkPolicy.Spec.PolicyTypes)
+	}
+	if len(networkPolicy.Spec.PodSelector.MatchLabels) == 0 {
+		t.Fatal("expected NetworkPolicy pod selector labels to be populated")
+	}
+	if networkPolicy.Spec.PodSelector.MatchLabels["app.kubernetes.io/instance"] != testAgentName {
+		t.Fatalf("expected NetworkPolicy selector instance label %q, got %+v", testAgentName, networkPolicy.Spec.PodSelector.MatchLabels)
+	}
+	if len(networkPolicy.Spec.Egress) != 2 {
+		t.Fatalf("expected 2 default egress rules, got %d", len(networkPolicy.Spec.Egress))
+	}
+
+	dnsRule := networkPolicy.Spec.Egress[0]
+	if len(dnsRule.To) != 0 {
+		t.Fatalf("expected DNS rule to allow port-based egress without destination selectors, got %+v", dnsRule.To)
+	}
+	requireNetworkPolicyPort(t, dnsRule.Ports, corev1.ProtocolUDP, networkPolicyDNSPort)
+	requireNetworkPolicyPort(t, dnsRule.Ports, corev1.ProtocolTCP, networkPolicyDNSPort)
+
+	webRule := networkPolicy.Spec.Egress[1]
+	if len(webRule.To) != 0 {
+		t.Fatalf("expected web egress rule to allow port-based egress without destination selectors, got %+v", webRule.To)
+	}
+	requireNetworkPolicyPort(t, webRule.Ports, corev1.ProtocolTCP, networkPolicyHTTPPort)
+	requireNetworkPolicyPort(t, webRule.Ports, corev1.ProtocolTCP, networkPolicyHTTPSPort)
+}
+
+func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+	agent.Spec.Terminal.Backend = "ssh"
+
+	networkPolicy := buildNetworkPolicy(agent)
+	if len(networkPolicy.Spec.Egress) != 3 {
+		t.Fatalf("expected 3 egress rules for ssh backend, got %d", len(networkPolicy.Spec.Egress))
+	}
+
+	sshRule := networkPolicy.Spec.Egress[2]
+	if len(sshRule.To) != 0 {
+		t.Fatalf("expected SSH rule to allow port-based egress without destination selectors, got %+v", sshRule.To)
+	}
+	requireNetworkPolicyPort(t, sshRule.Ports, corev1.ProtocolTCP, networkPolicySSHPort)
 }
 
 func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
