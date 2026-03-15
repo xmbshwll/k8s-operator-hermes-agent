@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,16 +18,24 @@ import (
 )
 
 const (
-	configHashAnnotation = "hermes.nous.ai/config-hash"
-	hermesContainerName  = "hermes"
-	hermesGatewayMode    = "gateway"
-	hermesDataPath       = "/data"
-	hermesHomePath       = "/data/hermes"
-	hermesSecretBasePath = "/var/run/hermes/secrets"
-	hermesDataVolumeName = "hermes-data"
-	hermesTmpPath        = "/tmp"
-	hermesTmpVolumeName  = "tmp"
-	hermesRuntimeUID     = int64(10001)
+	configHashAnnotation    = "hermes.nous.ai/config-hash"
+	hermesContainerName     = "hermes"
+	hermesGatewayMode       = "gateway"
+	hermesDataPath          = "/data"
+	hermesHomePath          = "/data/hermes"
+	hermesSecretBasePath    = "/var/run/hermes/secrets"
+	hermesDataVolumeName    = "hermes-data"
+	hermesTmpPath           = "/tmp"
+	hermesTmpVolumeName     = "tmp"
+	hermesRuntimeUID        = int64(10001)
+	hermesGatewayPIDFile    = "gateway.pid"
+	hermesGatewayStateFile  = "gateway_state.json"
+	startupFailureThreshold = int32(18)
+	readinessInitialDelay   = int32(5)
+	probePeriodSeconds      = int32(10)
+	probeTimeoutSeconds     = int32(5)
+	probeFailureThreshold   = int32(3)
+	livenessInitialDelay    = int32(15)
 )
 
 type resolvedConfigFile struct {
@@ -230,6 +239,9 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 						VolumeMounts:    volumeMounts,
 						Resources:       agent.Spec.Resources,
 						SecurityContext: hermesContainerSecurityContext(),
+						StartupProbe:    hermesStartupProbe(agent),
+						ReadinessProbe:  hermesReadinessProbe(agent),
+						LivenessProbe:   hermesLivenessProbe(agent),
 					}},
 					Volumes: volumes,
 				},
@@ -328,6 +340,155 @@ func hermesContainerSecurityContext() *corev1.SecurityContext {
 			Drop: []corev1.Capability{"ALL"},
 		},
 	}
+}
+
+func hermesStartupProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+	config := resolveProbeConfig(agent.Spec.Probes.Startup, startupProbeDefaults())
+	if !config.Enabled {
+		return nil
+	}
+
+	return buildExecProbe(config, probeCommand(
+		fmt.Sprintf("test -s %s", shellQuote(hermesGatewayPIDPath())),
+		fmt.Sprintf("test -s %s", shellQuote(hermesGatewayStatePath())),
+	))
+}
+
+func hermesReadinessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+	config := resolveProbeConfig(agent.Spec.Probes.Readiness, readinessProbeDefaults())
+	if !config.Enabled {
+		return nil
+	}
+
+	checks := []string{probeProcessCheck()}
+	if agent.Spec.Probes.RequireConnectedPlatform {
+		checks = append(checks, probeConnectedPlatformCheck())
+	} else {
+		checks = append(checks, fmt.Sprintf("test -s %s", shellQuote(hermesGatewayStatePath())))
+	}
+
+	return buildExecProbe(config, probeCommand(checks...))
+}
+
+func hermesLivenessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+	config := resolveProbeConfig(agent.Spec.Probes.Liveness, livenessProbeDefaults())
+	if !config.Enabled {
+		return nil
+	}
+
+	return buildExecProbe(config, probeCommand(
+		probeProcessCheck(),
+		fmt.Sprintf("test -s %s", shellQuote(hermesGatewayStatePath())),
+	))
+}
+
+func buildExecProbe(config probeConfig, command string) *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{Command: []string{"bash", "-ec", command}},
+		},
+		InitialDelaySeconds: config.InitialDelaySeconds,
+		PeriodSeconds:       config.PeriodSeconds,
+		TimeoutSeconds:      config.TimeoutSeconds,
+		FailureThreshold:    config.FailureThreshold,
+	}
+}
+
+type probeConfig struct {
+	Enabled             bool
+	InitialDelaySeconds int32
+	PeriodSeconds       int32
+	TimeoutSeconds      int32
+	FailureThreshold    int32
+}
+
+func resolveProbeConfig(spec hermesv1alpha1.HermesAgentProbeSpec, defaults probeConfig) probeConfig {
+	config := defaults
+	if spec.Enabled != nil {
+		config.Enabled = *spec.Enabled
+	}
+	if spec.InitialDelaySeconds > 0 {
+		config.InitialDelaySeconds = spec.InitialDelaySeconds
+	}
+	if spec.PeriodSeconds > 0 {
+		config.PeriodSeconds = spec.PeriodSeconds
+	}
+	if spec.TimeoutSeconds > 0 {
+		config.TimeoutSeconds = spec.TimeoutSeconds
+	}
+	if spec.FailureThreshold > 0 {
+		config.FailureThreshold = spec.FailureThreshold
+	}
+	return config
+}
+
+func startupProbeDefaults() probeConfig {
+	return probeConfig{
+		Enabled:             true,
+		InitialDelaySeconds: 0,
+		PeriodSeconds:       probePeriodSeconds,
+		TimeoutSeconds:      probeTimeoutSeconds,
+		FailureThreshold:    startupFailureThreshold,
+	}
+}
+
+func readinessProbeDefaults() probeConfig {
+	return probeConfig{
+		Enabled:             true,
+		InitialDelaySeconds: readinessInitialDelay,
+		PeriodSeconds:       probePeriodSeconds,
+		TimeoutSeconds:      probeTimeoutSeconds,
+		FailureThreshold:    probeFailureThreshold,
+	}
+}
+
+func livenessProbeDefaults() probeConfig {
+	return probeConfig{
+		Enabled:             true,
+		InitialDelaySeconds: livenessInitialDelay,
+		PeriodSeconds:       probePeriodSeconds,
+		TimeoutSeconds:      probeTimeoutSeconds,
+		FailureThreshold:    probeFailureThreshold,
+	}
+}
+
+func probeCommand(checks ...string) string {
+	return fmt.Sprintf("set -euo pipefail; %s", joinWithAnd(checks))
+}
+
+func joinWithAnd(checks []string) string {
+	if len(checks) == 0 {
+		return "true"
+	}
+
+	var result strings.Builder
+	result.WriteString(checks[0])
+	for _, check := range checks[1:] {
+		result.WriteString(" && " + check)
+	}
+	return result.String()
+}
+
+func probeProcessCheck() string {
+	pidPath := shellQuote(hermesGatewayPIDPath())
+	return fmt.Sprintf("pid=$(cat %s) && [ -n \"$pid\" ] && kill -0 \"$pid\"", pidPath)
+}
+
+func probeConnectedPlatformCheck() string {
+	statePath := shellQuote(hermesGatewayStatePath())
+	return fmt.Sprintf("test -s %s && grep -Eq '\"connected\"[[:space:]]*:[[:space:]]*true' %s", statePath, statePath)
+}
+
+func hermesGatewayPIDPath() string {
+	return path.Join(hermesHomePath, hermesGatewayPIDFile)
+}
+
+func hermesGatewayStatePath() string {
+	return path.Join(hermesHomePath, hermesGatewayStateFile)
+}
+
+func shellQuote(value string) string {
+	return fmt.Sprintf("%q", value)
 }
 
 func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -85,6 +86,25 @@ func requireEmptyDirVolume(t *testing.T, volumes []corev1.Volume, name string) {
 	}
 
 	t.Fatalf("expected emptyDir volume %s", name)
+}
+
+func requireExecProbe(t *testing.T, probe *corev1.Probe, commandParts ...string) {
+	t.Helper()
+
+	if probe == nil {
+		t.Fatal("expected probe to be configured")
+	}
+	if probe.Exec == nil {
+		t.Fatalf("expected exec probe, got %+v", probe)
+	}
+	if len(probe.Exec.Command) != 3 || probe.Exec.Command[0] != "bash" || probe.Exec.Command[1] != "-ec" {
+		t.Fatalf("expected probe command [bash -ec <script>], got %+v", probe.Exec.Command)
+	}
+	for _, part := range commandParts {
+		if !strings.Contains(probe.Exec.Command[2], part) {
+			t.Fatalf("expected probe command %q to contain %q", probe.Exec.Command[2], part)
+		}
+	}
 }
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
@@ -279,6 +299,64 @@ func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 	}
 	if !foundMount {
 		t.Fatal("expected StatefulSet container to mount the Hermes data volume at /data")
+	}
+}
+
+func TestBuildStatefulSetConfiguresHermesProbes(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Probes.RequireConnectedPlatform = true
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	container := statefulSet.Spec.Template.Spec.Containers[0]
+
+	requireExecProbe(t, container.StartupProbe, hermesGatewayPIDFile, hermesGatewayStateFile)
+	if container.StartupProbe.InitialDelaySeconds != 0 {
+		t.Fatalf("expected startup probe initial delay 0, got %d", container.StartupProbe.InitialDelaySeconds)
+	}
+	if container.StartupProbe.FailureThreshold != startupFailureThreshold {
+		t.Fatalf("expected startup probe failure threshold %d, got %d", startupFailureThreshold, container.StartupProbe.FailureThreshold)
+	}
+
+	requireExecProbe(t, container.ReadinessProbe, "kill -0", hermesGatewayPIDFile, "\"connected\"")
+	if container.ReadinessProbe.InitialDelaySeconds != readinessInitialDelay {
+		t.Fatalf("expected readiness probe initial delay %d, got %d", readinessInitialDelay, container.ReadinessProbe.InitialDelaySeconds)
+	}
+
+	requireExecProbe(t, container.LivenessProbe, "kill -0", hermesGatewayPIDFile, hermesGatewayStateFile)
+	if container.LivenessProbe.InitialDelaySeconds != livenessInitialDelay {
+		t.Fatalf("expected liveness probe initial delay %d, got %d", livenessInitialDelay, container.LivenessProbe.InitialDelaySeconds)
+	}
+}
+
+func TestBuildStatefulSetOmitsDisabledProbes(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	disabled := false
+	agent.Spec.Probes.Startup.Enabled = &disabled
+	agent.Spec.Probes.Readiness.Enabled = &disabled
+	agent.Spec.Probes.Liveness.Enabled = &disabled
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	container := statefulSet.Spec.Template.Spec.Containers[0]
+	if container.StartupProbe != nil {
+		t.Fatalf("expected startup probe to be disabled, got %+v", container.StartupProbe)
+	}
+	if container.ReadinessProbe != nil {
+		t.Fatalf("expected readiness probe to be disabled, got %+v", container.ReadinessProbe)
+	}
+	if container.LivenessProbe != nil {
+		t.Fatalf("expected liveness probe to be disabled, got %+v", container.LivenessProbe)
 	}
 }
 

@@ -229,4 +229,7 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	requireHermesContainerSecurityContext(t, container)
 	requireVolumeMount(t, container.VolumeMounts, hermesDataVolumeName, hermesDataPath)
 	requireVolumeMount(t, container.VolumeMounts, hermesTmpVolumeName, hermesTmpPath)
+	requireExecProbe(t, container.StartupProbe, hermesGatewayPIDFile, hermesGatewayStateFile)
+	requireExecProbe(t, container.ReadinessProbe, "kill -0", hermesGatewayPIDFile)
+	requireExecProbe(t, container.LivenessProbe, "kill -0", hermesGatewayPIDFile, hermesGatewayStateFile)
 }
