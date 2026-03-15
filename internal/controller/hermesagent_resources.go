@@ -24,6 +24,9 @@ const (
 	hermesHomePath       = "/data/hermes"
 	hermesSecretBasePath = "/var/run/hermes/secrets"
 	hermesDataVolumeName = "hermes-data"
+	hermesTmpPath        = "/tmp"
+	hermesTmpVolumeName  = "tmp"
+	hermesRuntimeUID     = int64(10001)
 )
 
 type resolvedConfigFile struct {
@@ -186,11 +189,17 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 	volumes := append([]corev1.Volume{}, inputs.Volumes...)
 	volumeMounts := append([]corev1.VolumeMount{}, inputs.VolumeMounts...)
 
-	volumes = append(volumes, hermesDataVolume(agent))
-	volumeMounts = append(volumeMounts, corev1.VolumeMount{
-		Name:      hermesDataVolumeName,
-		MountPath: hermesDataPath,
-	})
+	volumes = append(volumes, hermesDataVolume(agent), hermesTmpVolume())
+	volumeMounts = append(volumeMounts,
+		corev1.VolumeMount{
+			Name:      hermesDataVolumeName,
+			MountPath: hermesDataPath,
+		},
+		corev1.VolumeMount{
+			Name:      hermesTmpVolumeName,
+			MountPath: hermesTmpPath,
+		},
+	)
 
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -210,6 +219,7 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 					Annotations: mergeStringMaps(nil, inputs.Annotations),
 				},
 				Spec: corev1.PodSpec{
+					SecurityContext: hermesPodSecurityContext(),
 					Containers: []corev1.Container{{
 						Name:            hermesContainerName,
 						Image:           hermesImage(agent.Spec.Image),
@@ -219,6 +229,7 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 						EnvFrom:         inputs.EnvFrom,
 						VolumeMounts:    volumeMounts,
 						Resources:       agent.Spec.Resources,
+						SecurityContext: hermesContainerSecurityContext(),
 					}},
 					Volumes: volumes,
 				},
@@ -293,6 +304,32 @@ func hermesArgs(agent *hermesv1alpha1.HermesAgent) []string {
 	return []string{"hermes", mode}
 }
 
+func hermesPodSecurityContext() *corev1.PodSecurityContext {
+	runAsNonRoot := true
+	uid := hermesRuntimeUID
+
+	return &corev1.PodSecurityContext{
+		RunAsNonRoot: &runAsNonRoot,
+		RunAsUser:    &uid,
+		RunAsGroup:   &uid,
+		FSGroup:      &uid,
+		SeccompProfile: &corev1.SeccompProfile{
+			Type: corev1.SeccompProfileTypeRuntimeDefault,
+		},
+	}
+}
+
+func hermesContainerSecurityContext() *corev1.SecurityContext {
+	allowPrivilegeEscalation := false
+
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: &allowPrivilegeEscalation,
+		Capabilities: &corev1.Capabilities{
+			Drop: []corev1.Capability{"ALL"},
+		},
+	}
+}
+
 func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {
 	if persistenceEnabled(agent) {
 		return corev1.Volume{
@@ -307,6 +344,13 @@ func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {
 
 	return corev1.Volume{
 		Name:         hermesDataVolumeName,
+		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+	}
+}
+
+func hermesTmpVolume() corev1.Volume {
+	return corev1.Volume{
+		Name:         hermesTmpVolumeName,
 		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 	}
 }

@@ -225,15 +225,8 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	if container.Resources.Limits.Memory().String() != "4Gi" {
 		t.Fatalf("expected memory limit 4Gi, got %s", container.Resources.Limits.Memory().String())
 	}
-
-	foundDataMount := false
-	for _, mount := range container.VolumeMounts {
-		if mount.Name == hermesDataVolumeName && mount.MountPath == hermesDataPath {
-			foundDataMount = true
-			break
-		}
-	}
-	if !foundDataMount {
-		t.Fatal("expected StatefulSet container to mount the Hermes data volume at /data")
-	}
+	requireHermesPodSecurityContext(t, statefulSet.Spec.Template.Spec)
+	requireHermesContainerSecurityContext(t, container)
+	requireVolumeMount(t, container.VolumeMounts, hermesDataVolumeName, hermesDataPath)
+	requireVolumeMount(t, container.VolumeMounts, hermesTmpVolumeName, hermesTmpPath)
 }

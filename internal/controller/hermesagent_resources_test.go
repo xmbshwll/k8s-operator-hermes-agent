@@ -26,6 +26,67 @@ func resourceMustParse(t *testing.T, value string) resource.Quantity {
 	return quantity
 }
 
+func requireHermesPodSecurityContext(t *testing.T, podSpec corev1.PodSpec) {
+	t.Helper()
+
+	if podSpec.SecurityContext == nil {
+		t.Fatal("expected pod security context to be configured")
+	}
+	if podSpec.SecurityContext.RunAsNonRoot == nil || !*podSpec.SecurityContext.RunAsNonRoot {
+		t.Fatal("expected pod to run as non-root")
+	}
+	if podSpec.SecurityContext.RunAsUser == nil || *podSpec.SecurityContext.RunAsUser != hermesRuntimeUID {
+		t.Fatalf("expected pod runAsUser %d, got %+v", hermesRuntimeUID, podSpec.SecurityContext.RunAsUser)
+	}
+	if podSpec.SecurityContext.FSGroup == nil || *podSpec.SecurityContext.FSGroup != hermesRuntimeUID {
+		t.Fatalf("expected pod fsGroup %d, got %+v", hermesRuntimeUID, podSpec.SecurityContext.FSGroup)
+	}
+	if podSpec.SecurityContext.SeccompProfile == nil || podSpec.SecurityContext.SeccompProfile.Type != corev1.SeccompProfileTypeRuntimeDefault {
+		t.Fatalf("expected pod seccomp profile RuntimeDefault, got %+v", podSpec.SecurityContext.SeccompProfile)
+	}
+}
+
+func requireHermesContainerSecurityContext(t *testing.T, container corev1.Container) {
+	t.Helper()
+
+	if container.SecurityContext == nil {
+		t.Fatal("expected container security context to be configured")
+	}
+	if container.SecurityContext.AllowPrivilegeEscalation == nil || *container.SecurityContext.AllowPrivilegeEscalation {
+		t.Fatal("expected allowPrivilegeEscalation to be false")
+	}
+	if container.SecurityContext.Capabilities == nil {
+		t.Fatal("expected container capabilities to be configured")
+	}
+	if len(container.SecurityContext.Capabilities.Drop) != 1 || container.SecurityContext.Capabilities.Drop[0] != corev1.Capability("ALL") {
+		t.Fatalf("expected container to drop all capabilities, got %+v", container.SecurityContext.Capabilities)
+	}
+}
+
+func requireVolumeMount(t *testing.T, mounts []corev1.VolumeMount, name, mountPath string) {
+	t.Helper()
+
+	for _, mount := range mounts {
+		if mount.Name == name && mount.MountPath == mountPath {
+			return
+		}
+	}
+
+	t.Fatalf("expected volume mount %s at %s", name, mountPath)
+}
+
+func requireEmptyDirVolume(t *testing.T, volumes []corev1.Volume, name string) {
+	t.Helper()
+
+	for _, volume := range volumes {
+		if volume.Name == name && volume.EmptyDir != nil {
+			return
+		}
+	}
+
+	t.Fatalf("expected emptyDir volume %s", name)
+}
+
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
@@ -268,4 +329,8 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	if container.Resources.Limits.Memory().String() != "4Gi" {
 		t.Fatalf("expected memory limit 4Gi, got %s", container.Resources.Limits.Memory().String())
 	}
+	requireHermesPodSecurityContext(t, statefulSet.Spec.Template.Spec)
+	requireHermesContainerSecurityContext(t, container)
+	requireEmptyDirVolume(t, statefulSet.Spec.Template.Spec.Volumes, hermesTmpVolumeName)
+	requireVolumeMount(t, container.VolumeMounts, hermesTmpVolumeName, hermesTmpPath)
 }
