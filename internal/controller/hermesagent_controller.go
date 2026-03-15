@@ -48,6 +48,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current HermesAgent config state toward the desired state.
@@ -85,6 +86,10 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	inputs := buildPodTemplateInputs(agent, plan)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
 		return ctrl.Result{}, err
@@ -113,6 +118,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&hermesv1alpha1.HermesAgent{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&appsv1.StatefulSet{}).
 		Named("hermesagent").
 		Complete(r)
@@ -127,6 +133,28 @@ func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, ag
 		configMap.Labels = mergeStringMaps(configMap.Labels, resourceLabels(agent))
 		configMap.Data = map[string]string{file.ConfigMapKey: file.Content}
 		return controllerutil.SetControllerReference(agent, configMap, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+	if !persistenceEnabled(agent) {
+		return nil
+	}
+
+	desired, err := buildPersistentVolumeClaim(agent)
+	if err != nil {
+		return err
+	}
+
+	persistentVolumeClaim := &corev1.PersistentVolumeClaim{}
+	persistentVolumeClaim.Namespace = agent.Namespace
+	persistentVolumeClaim.Name = desired.Name
+
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, persistentVolumeClaim, func() error {
+		persistentVolumeClaim.Labels = mergeStringMaps(persistentVolumeClaim.Labels, desired.Labels)
+		persistentVolumeClaim.Spec = desired.Spec
+		return controllerutil.SetControllerReference(agent, persistentVolumeClaim, r.Scheme)
 	})
 	return err
 }

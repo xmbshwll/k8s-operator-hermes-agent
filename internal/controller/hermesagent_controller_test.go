@@ -86,3 +86,69 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 		t.Fatalf("expected StatefulSet pod template config hash to change, got %q", updatedHash)
 	}
 }
+
+func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default", UID: "uid-1"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Storage: hermesv1alpha1.HermesAgentStorageSpec{
+				Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+					Size:        "25Gi",
+					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+				},
+			},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("first reconcile returned error: %v", err)
+	}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second reconcile returned error: %v", err)
+	}
+
+	var persistentVolumeClaim corev1.PersistentVolumeClaim
+	pvcKey := client.ObjectKey{Name: persistentVolumeClaimName(agent.Name), Namespace: agent.Namespace}
+	if err := k8sClient.Get(context.Background(), pvcKey, &persistentVolumeClaim); err != nil {
+		t.Fatalf("get PersistentVolumeClaim returned error: %v", err)
+	}
+	if persistentVolumeClaim.Spec.Resources.Requests.Storage().String() != testPersistentVolumeSize {
+		t.Fatalf("expected PVC storage request %s, got %s", testPersistentVolumeSize, persistentVolumeClaim.Spec.Resources.Requests.Storage().String())
+	}
+	if !metav1.IsControlledBy(&persistentVolumeClaim, agent) {
+		t.Fatal("expected PersistentVolumeClaim to be owned by HermesAgent")
+	}
+
+	var persistentVolumeClaimList corev1.PersistentVolumeClaimList
+	if err := k8sClient.List(context.Background(), &persistentVolumeClaimList, client.InNamespace(agent.Namespace)); err != nil {
+		t.Fatalf("list PersistentVolumeClaims returned error: %v", err)
+	}
+	if len(persistentVolumeClaimList.Items) != 1 {
+		t.Fatalf("expected exactly 1 PersistentVolumeClaim after repeated reconcile, got %d", len(persistentVolumeClaimList.Items))
+	}
+}

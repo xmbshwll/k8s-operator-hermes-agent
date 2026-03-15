@@ -9,9 +9,10 @@ import (
 )
 
 const (
-	testAgentName     = "example"
-	testInlineConfig  = "model: anthropic/claude-opus-4.1\n"
-	testUpdatedConfig = "model: openai/gpt-4.1-mini\n"
+	testAgentName            = "example"
+	testInlineConfig         = "model: anthropic/claude-opus-4.1\n"
+	testUpdatedConfig        = "model: openai/gpt-4.1-mini\n"
+	testPersistentVolumeSize = "25Gi"
 )
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
@@ -145,5 +146,66 @@ func TestBuildStatefulSetUpdatesPodTemplateAnnotationWhenConfigChanges(t *testin
 	updatedStatefulSet := buildStatefulSet(updated, buildPodTemplateInputs(updated, updatedPlan))
 	if baseStatefulSet.Spec.Template.Annotations[configHashAnnotation] == updatedStatefulSet.Spec.Template.Annotations[configHashAnnotation] {
 		t.Fatal("expected StatefulSet pod template annotation to change when config changes")
+	}
+}
+
+func TestBuildPersistentVolumeClaimUsesStorageSpec(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = "default"
+	agent.Spec.Storage.Persistence.Size = testPersistentVolumeSize
+	agent.Spec.Storage.Persistence.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+	storageClassName := "fast-ssd"
+	agent.Spec.Storage.Persistence.StorageClassName = &storageClassName
+
+	persistentVolumeClaim, err := buildPersistentVolumeClaim(agent)
+	if err != nil {
+		t.Fatalf("buildPersistentVolumeClaim returned error: %v", err)
+	}
+	if persistentVolumeClaim.Name != "example-data" {
+		t.Fatalf("expected PVC name example-data, got %s", persistentVolumeClaim.Name)
+	}
+	if persistentVolumeClaim.Spec.Resources.Requests.Storage().String() != testPersistentVolumeSize {
+		t.Fatalf("expected PVC storage request %s, got %s", testPersistentVolumeSize, persistentVolumeClaim.Spec.Resources.Requests.Storage().String())
+	}
+	if len(persistentVolumeClaim.Spec.AccessModes) != 1 || persistentVolumeClaim.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Fatalf("expected PVC access mode ReadWriteOnce, got %+v", persistentVolumeClaim.Spec.AccessModes)
+	}
+	if persistentVolumeClaim.Spec.StorageClassName == nil || *persistentVolumeClaim.Spec.StorageClassName != storageClassName {
+		t.Fatalf("expected PVC storageClassName %q, got %+v", storageClassName, persistentVolumeClaim.Spec.StorageClassName)
+	}
+}
+
+func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.Raw = testInlineConfig
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	foundVolume := false
+	for _, volume := range statefulSet.Spec.Template.Spec.Volumes {
+		if volume.Name == hermesDataVolumeName && volume.PersistentVolumeClaim != nil && volume.PersistentVolumeClaim.ClaimName == persistentVolumeClaimName(agent.Name) {
+			foundVolume = true
+			break
+		}
+	}
+	if !foundVolume {
+		t.Fatal("expected StatefulSet pod spec to include the Hermes data PVC volume")
+	}
+
+	foundMount := false
+	for _, mount := range statefulSet.Spec.Template.Spec.Containers[0].VolumeMounts {
+		if mount.Name == hermesDataVolumeName && mount.MountPath == hermesDataPath {
+			foundMount = true
+			break
+		}
+	}
+	if !foundMount {
+		t.Fatal("expected StatefulSet container to mount the Hermes data volume at /data")
 	}
 }

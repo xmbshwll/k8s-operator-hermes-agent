@@ -10,6 +10,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
@@ -17,9 +18,11 @@ import (
 
 const (
 	configHashAnnotation = "hermes.nous.ai/config-hash"
+	hermesContainerName  = "hermes"
 	hermesDataPath       = "/data"
 	hermesHomePath       = "/data/hermes"
 	hermesSecretBasePath = "/var/run/hermes/secrets"
+	hermesDataVolumeName = "hermes-data"
 )
 
 type resolvedConfigFile struct {
@@ -152,9 +155,41 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 	return inputs
 }
 
+func buildPersistentVolumeClaim(agent *hermesv1alpha1.HermesAgent) (*corev1.PersistentVolumeClaim, error) {
+	quantity, err := resource.ParseQuantity(persistenceSize(agent))
+	if err != nil {
+		return nil, fmt.Errorf("parse storage size: %w", err)
+	}
+
+	return &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      persistentVolumeClaimName(agent.Name),
+			Namespace: agent.Namespace,
+			Labels:    resourceLabels(agent),
+		},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: persistenceAccessModes(agent),
+			Resources: corev1.VolumeResourceRequirements{
+				Requests: corev1.ResourceList{
+					corev1.ResourceStorage: quantity,
+				},
+			},
+			StorageClassName: agent.Spec.Storage.Persistence.StorageClassName,
+		},
+	}, nil
+}
+
 func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
 	replicas := int32(1)
 	labels := resourceLabels(agent)
+	volumes := append([]corev1.Volume{}, inputs.Volumes...)
+	volumeMounts := append([]corev1.VolumeMount{}, inputs.VolumeMounts...)
+
+	volumes = append(volumes, hermesDataVolume(agent))
+	volumeMounts = append(volumeMounts, corev1.VolumeMount{
+		Name:      hermesDataVolumeName,
+		MountPath: hermesDataPath,
+	})
 
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
@@ -180,10 +215,10 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 						ImagePullPolicy: agent.Spec.Image.PullPolicy,
 						Env:             inputs.Env,
 						EnvFrom:         inputs.EnvFrom,
-						VolumeMounts:    inputs.VolumeMounts,
+						VolumeMounts:    volumeMounts,
 						Resources:       agent.Spec.Resources,
 					}},
-					Volumes: inputs.Volumes,
+					Volumes: volumes,
 				},
 			},
 		},
@@ -246,6 +281,49 @@ func hermesImage(image hermesv1alpha1.HermesAgentImageSpec) string {
 		return image.Repository
 	}
 	return fmt.Sprintf("%s:%s", image.Repository, image.Tag)
+}
+
+func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {
+	if persistenceEnabled(agent) {
+		return corev1.Volume{
+			Name: hermesDataVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: persistentVolumeClaimName(agent.Name),
+				},
+			},
+		}
+	}
+
+	return corev1.Volume{
+		Name:         hermesDataVolumeName,
+		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+	}
+}
+
+func persistenceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+	if agent.Spec.Storage.Persistence.Enabled == nil {
+		return true
+	}
+	return *agent.Spec.Storage.Persistence.Enabled
+}
+
+func persistenceSize(agent *hermesv1alpha1.HermesAgent) string {
+	if agent.Spec.Storage.Persistence.Size == "" {
+		return "10Gi"
+	}
+	return agent.Spec.Storage.Persistence.Size
+}
+
+func persistenceAccessModes(agent *hermesv1alpha1.HermesAgent) []corev1.PersistentVolumeAccessMode {
+	if len(agent.Spec.Storage.Persistence.AccessModes) == 0 {
+		return []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
+	}
+	return append([]corev1.PersistentVolumeAccessMode{}, agent.Spec.Storage.Persistence.AccessModes...)
+}
+
+func persistentVolumeClaimName(resourceName string) string {
+	return fmt.Sprintf("%s-data", resourceName)
 }
 
 func sourceFieldName(id string) string {
