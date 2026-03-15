@@ -1,120 +1,231 @@
-# k8s-operator-hermes-agent
-// TODO(user): Add simple overview of use/purpose
+# Hermes Kubernetes Operator
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+A Kubernetes operator for running Hermes Agent as a stateful, long-lived gateway workload.
 
-## Getting Started
+The operator manages a `HermesAgent` custom resource and reconciles the Kubernetes objects needed to run it safely in-cluster:
+- a singleton `StatefulSet`
+- persistent storage for `HERMES_HOME`
+- generated or referenced configuration files
+- optional `Service` and `NetworkPolicy` resources
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+This repository contains the **operator**. It does **not** build the Hermes runtime image for you. Each `HermesAgent` points at a separate Hermes container image through `spec.image`.
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## Status
+
+This is an MVP-focused operator. The first release is intentionally narrow:
+- one `HermesAgent` resource kind
+- one Hermes pod per resource
+- persistent local state via PVC
+- egress-first deployments
+- minimal installation surface via Helm
+
+See [`docs/architecture.md`](docs/architecture.md) for the design rationale and explicit v1 non-goals.
+
+## How it works
+
+A `HermesAgent` resource lets you declare:
+- the Hermes runtime image to run
+- Hermes `config.yaml` and `gateway.json`
+- environment variables and secret references
+- persistent storage settings
+- resource requests and limits
+- startup, readiness, and liveness probes
+- optional service exposure and network policy
+
+The controller then reconciles:
+- `ConfigMap` resources for inline config
+- a PVC for Hermes state when persistence is enabled
+- a singleton `StatefulSet`
+- an optional `Service`
+- an optional egress-focused `NetworkPolicy`
+
+## Prerequisites
+
+- Go 1.24.6+
+- Docker
+- kubectl
+- Access to a Kubernetes cluster
+- Helm 4 for chart installation
+
+## Key concepts
+
+### Operator image vs Hermes runtime image
+
+There are two different images involved:
+
+1. **Operator image**
+   - Built from this repository's `Dockerfile`
+   - Runs the Kubernetes controller manager
+   - Installed with Helm via `make helm-deploy`
+
+2. **Hermes runtime image**
+   - Referenced by each `HermesAgent` in `spec.image`
+   - Runs the actual Hermes process inside the managed `StatefulSet`
+   - Must contain a working `hermes` CLI
+
+Do not point `spec.image` at the operator image. They serve different roles.
+
+### Runtime contract for Hermes images
+
+The operator expects the Hermes runtime image to:
+- contain the `hermes` executable in `PATH`
+- support running `hermes gateway`
+- tolerate `HERMES_HOME=/data/hermes`
+- write runtime state under `HERMES_HOME`
+- run under a non-root security context
+- support exec probes that use `bash -ec`
+
+The controller mounts:
+- `/data` for Hermes state
+- `/tmp` as writable scratch space
+- `config.yaml` at `/data/hermes/config.yaml` when provided
+- `gateway.json` at `/data/hermes/gateway.json` when provided
+- referenced secrets under `/var/run/hermes/secrets/<secret-name>`
+
+## Install the operator
+
+### 1. Build and push the operator image
 
 ```sh
-make docker-build docker-push IMG=<some-registry>/k8s-operator-hermes-agent:tag
+make docker-build docker-push IMG=<registry>/k8s-operator-hermes-agent:<tag>
 ```
 
-**Install the operator with Helm:**
+### 2. Install with Helm
 
 ```sh
-make helm-deploy IMG=<some-registry>/k8s-operator-hermes-agent:tag
+make helm-deploy IMG=<registry>/k8s-operator-hermes-agent:<tag>
 ```
 
-This installs the CRD, controller deployment, RBAC, and metrics service into the
-`k8s-operator-hermes-agent-system` namespace by default. Override the namespace
-with `HELM_NAMESPACE=<namespace>` when needed.
+By default this installs into `k8s-operator-hermes-agent-system`.
+Override the namespace when needed:
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+```sh
+make helm-deploy \
+  IMG=<registry>/k8s-operator-hermes-agent:<tag> \
+  HELM_NAMESPACE=<namespace>
+```
 
-**Create instances of your solution**
-You can apply the samples (examples) from `config/samples/`:
+This installs:
+- the `HermesAgent` CRD
+- the operator deployment
+- RBAC for the controller
+- the metrics service
+
+### 3. Verify the operator
+
+```sh
+kubectl get pods -n k8s-operator-hermes-agent-system
+kubectl get crd hermesagents.hermes.nous.ai
+```
+
+## Deploy a sample HermesAgent
+
+A sample resource is included at [`config/samples/hermes_v1alpha1_hermesagent.yaml`](config/samples/hermes_v1alpha1_hermesagent.yaml).
+
+Before applying it, update the Hermes runtime image:
+
+```yaml
+spec:
+  image:
+    repository: ghcr.io/example/hermes-agent
+    tag: gateway-core
+```
+
+Replace that placeholder with your real Hermes image.
+
+Then apply the sample:
 
 ```sh
 kubectl apply -k config/samples/
 ```
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+Check the resulting resources:
+
+```sh
+kubectl get hermesagents
+kubectl get statefulsets,pvc,configmaps
+kubectl describe hermesagent hermesagent-sample
+```
+
+Watch the managed pod:
+
+```sh
+kubectl get pods -w
+```
+
+## Configuration model
+
+A `HermesAgent` supports two config files:
+- `spec.config` → Hermes `config.yaml`
+- `spec.gatewayConfig` → Hermes `gateway.json`
+
+Each file can be supplied in one of two ways:
+
+1. **Inline content** via `raw`
+   - the controller creates a generated `ConfigMap`
+   - changes trigger a `StatefulSet` rollout through a config hash annotation
+
+2. **Existing ConfigMap reference** via `configMapRef`
+   - the controller mounts the referenced key directly
+
+Environment and secrets are handled separately:
+- `spec.env` adds explicit environment variables
+- `spec.envFrom` imports `ConfigMap` and `Secret` env sources
+- `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`
+
+## Persistence model
+
+Hermes is treated as stateful.
+
+By default the operator provisions a PVC and mounts it at `/data`, with `HERMES_HOME` set to `/data/hermes`.
+This preserves Hermes state across pod restarts and reschedules.
+
+You can disable persistence, but that switches Hermes state to `emptyDir`, which is appropriate only for disposable environments.
+
+## Uninstall
+
+Delete any `HermesAgent` resources you created:
 
 ```sh
 kubectl delete -k config/samples/
 ```
 
-**Uninstall the Helm release:**
+Then uninstall the operator release:
 
 ```sh
 make helm-uninstall
 ```
 
-CRDs are kept on uninstall so existing custom resources are not removed unexpectedly.
-Delete `charts/chart/crds/hermesagents.hermes.nous.ai.yaml` manually only when you
-intend to remove the API from the cluster.
+The CRD is kept on uninstall so existing custom resources are not removed unexpectedly.
+If you want to remove the API entirely, delete the CRD manually after removing all `HermesAgent` resources.
 
-## Project Distribution
+## Development
 
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
+Useful commands:
 
 ```sh
-make build-installer IMG=<some-registry>/k8s-operator-hermes-agent:tag
+make test
+make lint-fix
+make build-installer
 ```
 
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
+Helm chart location:
+- `charts/chart/`
 
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
-
-```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/k8s-operator-hermes-agent/<tag or branch>/dist/install.yaml
-```
-
-### By providing a Helm Chart
-
-The repository includes a Helm chart under `charts/chart/`.
-
-**Install directly from the chart:**
+Install directly from the chart:
 
 ```sh
 helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
   --namespace k8s-operator-hermes-agent-system \
   --create-namespace \
-  --set image.repository=<some-registry>/k8s-operator-hermes-agent \
+  --set image.repository=<registry>/k8s-operator-hermes-agent \
   --set image.tag=<tag>
 ```
 
-**Supported values:**
-- `image.repository`
-- `image.tag`
-- `image.pullPolicy`
-- `resources`
-- `leaderElection.enabled`
-- `serviceAccount.create`
-- `serviceAccount.name`
-- `metrics.enabled`
+## Documentation
 
-If you regenerate the chart with `kubebuilder edit --plugins=helm/v2-alpha --output-dir=charts`,
-re-apply any manual chart customizations afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+- [Architecture notes](docs/architecture.md)
+- [Sample HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)
 
 ## License
 
@@ -131,4 +242,3 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-
