@@ -8,4 +8,13 @@ layout:
 - go.kubebuilder.io/v4
 projectName: k8s-operator-hermes-agent
 repo: github.com/xmbshwll/k8s-operator-hermes-agent
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: nous.ai
+  group: hermes
+  kind: HermesAgent
+  path: github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1
+  version: v1alpha1
 version: "3"
