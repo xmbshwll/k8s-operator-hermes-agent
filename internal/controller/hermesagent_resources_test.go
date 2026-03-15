@@ -464,7 +464,7 @@ func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 		}
 	}
 	if !foundMount {
-		t.Fatal("expected StatefulSet container to mount the Hermes data volume at /data")
+		t.Fatalf("expected StatefulSet container to mount the Hermes data volume at %s", hermesDataPath)
 	}
 }
 

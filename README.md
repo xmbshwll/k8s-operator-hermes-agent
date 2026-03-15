@@ -76,7 +76,7 @@ The operator expects the Hermes runtime image to:
 - support exec probes that use `bash -ec`
 
 The controller mounts:
-- `/data` for Hermes state
+- `/data/hermes` for Hermes state
 - `/tmp` as writable scratch space
 - `config.yaml` at `/data/hermes/config.yaml` when provided
 - `gateway.json` at `/data/hermes/gateway.json` when provided
@@ -183,7 +183,7 @@ Environment and secrets are handled separately:
 
 Hermes is treated as stateful.
 
-By default the operator provisions a PVC and mounts it at `/data`, with `HERMES_HOME` set to `/data/hermes`.
+By default the operator provisions a PVC and mounts it at `/data/hermes`, with `HERMES_HOME` set to `/data/hermes`.
 This preserves Hermes state across pod restarts and reschedules.
 
 You can disable persistence, but that switches Hermes state to `emptyDir`, which is appropriate only for disposable environments.
@@ -211,9 +211,12 @@ Useful commands:
 
 ```sh
 make test
+make test-e2e
 make lint-fix
 make build-installer
 ```
+
+`make test-e2e` creates a disposable Kind cluster, builds the operator image plus a lightweight Hermes-compatible runtime image, installs the operator, applies a sample `HermesAgent`, and validates readiness, PVC-backed persistence across restart, and config rollout behavior.
 
 Helm chart location:
 - `charts/chart/`

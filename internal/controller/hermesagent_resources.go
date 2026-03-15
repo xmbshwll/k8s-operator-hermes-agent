@@ -23,7 +23,7 @@ const (
 	configHashAnnotation    = "hermes.nous.ai/config-hash"
 	hermesContainerName     = "hermes"
 	hermesGatewayMode       = "gateway"
-	hermesDataPath          = "/data"
+	hermesDataPath          = "/data/hermes"
 	hermesHomePath          = "/data/hermes"
 	hermesSecretBasePath    = "/var/run/hermes/secrets"
 	hermesDataVolumeName    = "hermes-data"

@@ -220,7 +220,11 @@ func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Conte
 
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, persistentVolumeClaim, func() error {
 		persistentVolumeClaim.Labels = mergeStringMaps(persistentVolumeClaim.Labels, desired.Labels)
-		persistentVolumeClaim.Spec = desired.Spec
+		if persistentVolumeClaim.CreationTimestamp.IsZero() {
+			persistentVolumeClaim.Spec = desired.Spec
+		} else {
+			persistentVolumeClaim.Spec.Resources.Requests = desired.Spec.Resources.Requests
+		}
 		return controllerutil.SetControllerReference(agent, persistentVolumeClaim, r.Scheme)
 	})
 	return err

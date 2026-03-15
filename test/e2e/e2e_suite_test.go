@@ -34,6 +34,8 @@ import (
 var (
 	// managerImage is the manager image to be built and loaded for testing.
 	managerImage = "example.com/k8s-operator-hermes-agent:v0.0.1"
+	// hermesRuntimeImage is a lightweight Hermes-compatible image used by e2e validation.
+	hermesRuntimeImage = "example.com/hermes-agent-e2e:v0.0.1"
 	// shouldCleanupCertManager tracks whether CertManager was installed by this suite.
 	shouldCleanupCertManager = false
 )
@@ -54,11 +56,20 @@ var _ = BeforeSuite(func() {
 	_, err := utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
+	By("building the Hermes runtime image for end-to-end validation")
+	cmd = exec.Command("docker", "build", "-t", hermesRuntimeImage, "./test/e2e/testdata/hermes-runtime")
+	_, err = utils.Run(cmd)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the Hermes runtime image")
+
 	// TODO(user): If you want to change the e2e test vendor from Kind,
 	// ensure the image is built and available, then remove the following block.
 	By("loading the manager image on Kind")
 	err = utils.LoadImageToKindClusterWithName(managerImage)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the manager image into Kind")
+
+	By("loading the Hermes runtime image on Kind")
+	err = utils.LoadImageToKindClusterWithName(hermesRuntimeImage)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to load the Hermes runtime image into Kind")
 
 	setupCertManager()
 })

@@ -31,7 +31,7 @@ This choice keeps the design honest. The operator does not pretend Hermes is saf
 
 ## Why persistent storage is the default
 
-The controller sets `HERMES_HOME=/data/hermes` and mounts `/data` into the pod.
+The controller sets `HERMES_HOME=/data/hermes` and mounts the Hermes state volume at `/data/hermes`.
 By default that storage comes from a PVC.
 
 Persistence is the default because Hermes writes state that should survive:
@@ -54,8 +54,7 @@ The managed Hermes container is expected to:
 - support exec probes that run via `bash -ec`
 
 The operator provides these paths:
-- `/data` — persistent or ephemeral state volume
-- `/data/hermes` — `HERMES_HOME`
+- `/data/hermes` — persistent or ephemeral state volume and `HERMES_HOME`
 - `/data/hermes/config.yaml` — mounted Hermes config when provided
 - `/data/hermes/gateway.json` — mounted gateway config when provided
 - `/var/run/hermes/secrets/<name>` — mounted secret references

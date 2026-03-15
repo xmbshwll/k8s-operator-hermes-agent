@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ "${1:-}" == "hermes" ]]; then
+  shift
+fi
+
+mode="${1:-gateway}"
+if [[ "$mode" != "gateway" ]]; then
+  echo "unsupported mode: $mode" >&2
+  exit 1
+fi
+
+export HERMES_HOME="${HERMES_HOME:-/data/hermes}"
+mkdir -p "$HERMES_HOME"
+
+boot_count_file="$HERMES_HOME/boot-count"
+pid_file="$HERMES_HOME/gateway.pid"
+state_file="$HERMES_HOME/gateway_state.json"
+config_file="$HERMES_HOME/config.yaml"
+
+boot_count=0
+if [[ -f "$boot_count_file" ]]; then
+  boot_count="$(cat "$boot_count_file")"
+fi
+boot_count="$((boot_count + 1))"
+printf '%s\n' "$boot_count" > "$boot_count_file"
+
+config_hash="missing"
+if [[ -f "$config_file" ]]; then
+  config_hash="$(sha256sum "$config_file" | awk '{print $1}')"
+fi
+
+write_state() {
+  printf '%s\n' "$$" > "$pid_file"
+  cat > "$state_file" <<JSON
+{"connected": true, "bootCount": ${boot_count}, "configHash": "${config_hash}"}
+JSON
+}
+
+cleanup() {
+  rm -f "$pid_file"
+  exit 0
+}
+trap cleanup TERM INT
+
+write_state
+while true; do
+  write_state
+  sleep 2
+done
