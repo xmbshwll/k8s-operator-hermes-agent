@@ -12,6 +12,7 @@ resources:
 - api:
     crdVersion: v1
     namespaced: true
+  controller: true
   domain: nous.ai
   group: hermes
   kind: HermesAgent

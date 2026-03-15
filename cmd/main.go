@@ -36,6 +36,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	"github.com/xmbshwll/k8s-operator-hermes-agent/internal/controller"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -177,6 +178,13 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.HermesAgentReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "HermesAgent")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
