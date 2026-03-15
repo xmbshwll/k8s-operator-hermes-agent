@@ -13,6 +13,7 @@ import (
 
 const (
 	testAgentName            = "example"
+	testNamespace            = "default"
 	testInlineConfig         = "model: anthropic/claude-opus-4.1\n"
 	testUpdatedConfig        = "model: openai/gpt-4.1-mini\n"
 	testPersistentVolumeSize = "25Gi"
@@ -267,7 +268,7 @@ func TestBuildStatefulSetUpdatesPodTemplateAnnotationWhenConfigChanges(t *testin
 func TestBuildPersistentVolumeClaimUsesStorageSpec(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
-	agent.Namespace = "default"
+	agent.Namespace = testNamespace
 	agent.Spec.Storage.Persistence.Size = testPersistentVolumeSize
 	agent.Spec.Storage.Persistence.AccessModes = []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 	storageClassName := "fast-ssd"
@@ -288,6 +289,60 @@ func TestBuildPersistentVolumeClaimUsesStorageSpec(t *testing.T) {
 	}
 	if persistentVolumeClaim.Spec.StorageClassName == nil || *persistentVolumeClaim.Spec.StorageClassName != storageClassName {
 		t.Fatalf("expected PVC storageClassName %q, got %+v", storageClassName, persistentVolumeClaim.Spec.StorageClassName)
+	}
+}
+
+func TestBuildServiceUsesDefaults(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+
+	service := buildService(agent)
+	if service.Name != testAgentName {
+		t.Fatalf("expected Service name %q, got %q", testAgentName, service.Name)
+	}
+	if service.Namespace != testNamespace {
+		t.Fatalf("expected Service namespace %s, got %q", testNamespace, service.Namespace)
+	}
+	if service.Spec.Type != corev1.ServiceTypeClusterIP {
+		t.Fatalf("expected Service type %q, got %q", corev1.ServiceTypeClusterIP, service.Spec.Type)
+	}
+	if len(service.Spec.Ports) != 1 {
+		t.Fatalf("expected exactly 1 Service port, got %d", len(service.Spec.Ports))
+	}
+	if service.Spec.Ports[0].Port != 8080 {
+		t.Fatalf("expected Service port 8080, got %d", service.Spec.Ports[0].Port)
+	}
+	if service.Spec.Ports[0].TargetPort.IntVal != 8080 {
+		t.Fatalf("expected Service targetPort 8080, got %+v", service.Spec.Ports[0].TargetPort)
+	}
+	if service.Spec.Ports[0].Protocol != corev1.ProtocolTCP {
+		t.Fatalf("expected Service protocol TCP, got %q", service.Spec.Ports[0].Protocol)
+	}
+	if len(service.Spec.Selector) == 0 {
+		t.Fatal("expected Service selector to be populated")
+	}
+	if service.Spec.Selector["app.kubernetes.io/instance"] != testAgentName {
+		t.Fatalf("expected Service selector instance label %q, got %+v", testAgentName, service.Spec.Selector)
+	}
+}
+
+func TestBuildServiceUsesExplicitSpec(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+	agent.Spec.Service.Type = corev1.ServiceTypeNodePort
+	agent.Spec.Service.Port = 9443
+
+	service := buildService(agent)
+	if service.Spec.Type != corev1.ServiceTypeNodePort {
+		t.Fatalf("expected Service type %q, got %q", corev1.ServiceTypeNodePort, service.Spec.Type)
+	}
+	if service.Spec.Ports[0].Port != 9443 {
+		t.Fatalf("expected Service port 9443, got %d", service.Spec.Ports[0].Port)
+	}
+	if service.Spec.Ports[0].TargetPort.IntVal != 9443 {
+		t.Fatalf("expected Service targetPort 9443, got %+v", service.Spec.Ports[0].TargetPort)
 	}
 }
 

@@ -58,6 +58,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current HermesAgent config state toward the desired state.
@@ -134,6 +135,19 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	if err := r.reconcileService(ctx, agent); err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "ServiceReconcileFailed", err.Error())
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ServiceReconcileFailed", "HermesAgent service could not be reconciled")
+			status.Phase = phaseWorkloadError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile service: %w (status update failed: %v)", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
 	log.Info("Reconciled HermesAgent config",
 		"name", agent.Name,
 		"generatedConfigMaps", countGeneratedFiles(plan.Files),
@@ -155,6 +169,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&hermesv1alpha1.HermesAgent{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.Service{}).
 		Owns(&appsv1.StatefulSet{}).
 		Named("hermesagent").
 		Complete(r)
@@ -205,6 +220,46 @@ func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent 
 		statefulSet.Labels = mergeStringMaps(statefulSet.Labels, desired.Labels)
 		statefulSet.Spec = desired.Spec
 		return controllerutil.SetControllerReference(agent, statefulSet, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+	service := &corev1.Service{}
+	serviceKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
+	serviceExists := true
+	if err := r.Get(ctx, serviceKey, service); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		serviceExists = false
+	}
+
+	if !serviceEnabled(agent) {
+		if !serviceExists || !metav1.IsControlledBy(service, agent) {
+			return nil
+		}
+		return r.Delete(ctx, service)
+	}
+
+	if serviceExists && !metav1.IsControlledBy(service, agent) {
+		return fmt.Errorf("service %s already exists and is not owned by HermesAgent %s", service.Name, agent.Name)
+	}
+
+	desired := buildService(agent)
+	service.Namespace = desired.Namespace
+	service.Name = desired.Name
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
+		existingPorts := append([]corev1.ServicePort{}, service.Spec.Ports...)
+		service.Labels = mergeStringMaps(service.Labels, desired.Labels)
+		service.Spec.Type = desired.Spec.Type
+		service.Spec.Selector = desired.Spec.Selector
+		service.Spec.Ports = desired.Spec.Ports
+		if (desired.Spec.Type == corev1.ServiceTypeNodePort || desired.Spec.Type == corev1.ServiceTypeLoadBalancer) && len(existingPorts) == 1 && len(service.Spec.Ports) == 1 && existingPorts[0].NodePort != 0 {
+			service.Spec.Ports[0].NodePort = existingPorts[0].NodePort
+		}
+		return controllerutil.SetControllerReference(agent, service, r.Scheme)
 	})
 	return err
 }

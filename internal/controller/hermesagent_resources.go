@@ -13,6 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -190,6 +191,28 @@ func buildPersistentVolumeClaim(agent *hermesv1alpha1.HermesAgent) (*corev1.Pers
 			StorageClassName: agent.Spec.Storage.Persistence.StorageClassName,
 		},
 	}, nil
+}
+
+func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
+	labels := resourceLabels(agent)
+	port := servicePort(agent)
+
+	return &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name,
+			Namespace: agent.Namespace,
+			Labels:    labels,
+		},
+		Spec: corev1.ServiceSpec{
+			Type:     serviceType(agent),
+			Selector: labels,
+			Ports: []corev1.ServicePort{{
+				Port:       port,
+				TargetPort: intstr.FromInt32(port),
+				Protocol:   corev1.ProtocolTCP,
+			}},
+		},
+	}
 }
 
 func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
@@ -521,6 +544,24 @@ func persistenceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
 		return true
 	}
 	return *agent.Spec.Storage.Persistence.Enabled
+}
+
+func serviceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+	return agent.Spec.Service.Enabled
+}
+
+func serviceType(agent *hermesv1alpha1.HermesAgent) corev1.ServiceType {
+	if agent.Spec.Service.Type == "" {
+		return corev1.ServiceTypeClusterIP
+	}
+	return agent.Spec.Service.Type
+}
+
+func servicePort(agent *hermesv1alpha1.HermesAgent) int32 {
+	if agent.Spec.Service.Port <= 0 {
+		return 8080
+	}
+	return agent.Spec.Service.Port
 }
 
 func persistenceSize(agent *hermesv1alpha1.HermesAgent) string {

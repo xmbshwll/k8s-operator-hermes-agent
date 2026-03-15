@@ -6,8 +6,10 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -28,7 +30,7 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
-		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Image: hermesv1alpha1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
@@ -100,7 +102,7 @@ func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
-		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default", UID: "uid-1"},
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-1"},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Image: hermesv1alpha1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
@@ -166,7 +168,7 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
-		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default", UID: "uid-2"},
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-2"},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Mode: "gateway",
 			Image: hermesv1alpha1.HermesAgentImageSpec{
@@ -234,6 +236,238 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	requireExecProbe(t, container.LivenessProbe, "kill -0", hermesGatewayPIDFile, hermesGatewayStateFile)
 }
 
+func TestReconcileDoesNotCreateServiceByDefault(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-default"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	var serviceList corev1.ServiceList
+	if err := k8sClient.List(context.Background(), &serviceList, client.InNamespace(agent.Namespace)); err != nil {
+		t.Fatalf("list Services returned error: %v", err)
+	}
+	if len(serviceList.Items) != 0 {
+		t.Fatalf("expected no Services by default, got %d", len(serviceList.Items))
+	}
+}
+
+func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-foreign"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+		},
+	}
+	foreignService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "foreign"},
+			Ports:    []corev1.ServicePort{{Port: 9000, TargetPort: intstr.FromInt32(9000)}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, foreignService).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	var service corev1.Service
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &service); err != nil {
+		t.Fatalf("get Service returned error: %v", err)
+	}
+	if len(service.OwnerReferences) != 0 {
+		t.Fatalf("expected non-owned Service to remain untouched, got owner refs %+v", service.OwnerReferences)
+	}
+	if service.Spec.Ports[0].Port != 9000 {
+		t.Fatalf("expected non-owned Service port 9000 to remain unchanged, got %+v", service.Spec.Ports)
+	}
+}
+
+func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-conflict"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config:  hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1alpha1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
+		},
+	}
+	foreignService := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
+		Spec: corev1.ServiceSpec{
+			Selector: map[string]string{"app": "foreign"},
+			Ports:    []corev1.ServicePort{{Port: 9000, TargetPort: intstr.FromInt32(9000)}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, foreignService).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err == nil {
+		t.Fatal("expected reconcile to fail when same-name Service is not owned by HermesAgent")
+	}
+
+	var service corev1.Service
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &service); err != nil {
+		t.Fatalf("get Service returned error: %v", err)
+	}
+	if len(service.OwnerReferences) != 0 {
+		t.Fatalf("expected foreign Service owner refs to remain unchanged, got %+v", service.OwnerReferences)
+	}
+	if service.Spec.Ports[0].Port != 9000 {
+		t.Fatalf("expected foreign Service port 9000 to remain unchanged, got %+v", service.Spec.Ports)
+	}
+}
+
+func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-enabled"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1alpha1.HermesAgentServiceSpec{
+				Enabled: true,
+				Type:    corev1.ServiceTypeClusterIP,
+				Port:    8080,
+			},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("first reconcile returned error: %v", err)
+	}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second reconcile returned error: %v", err)
+	}
+
+	var service corev1.Service
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &service); err != nil {
+		t.Fatalf("get Service returned error: %v", err)
+	}
+	if !metav1.IsControlledBy(&service, agent) {
+		t.Fatal("expected Service to be owned by HermesAgent")
+	}
+	if service.Spec.Type != corev1.ServiceTypeClusterIP {
+		t.Fatalf("expected Service type %q, got %q", corev1.ServiceTypeClusterIP, service.Spec.Type)
+	}
+	if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != 8080 {
+		t.Fatalf("expected Service port 8080, got %+v", service.Spec.Ports)
+	}
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	updatedAgent.Spec.Service.Enabled = false
+	if err := k8sClient.Update(context.Background(), updatedAgent); err != nil {
+		t.Fatalf("update HermesAgent returned error: %v", err)
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile after disabling service returned error: %v", err)
+	}
+
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &service); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected Service to be deleted when disabled, got error: %v", err)
+	}
+}
+
 func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
@@ -247,7 +481,7 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
-		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default", UID: "uid-3"},
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-3"},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Image: hermesv1alpha1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
@@ -305,7 +539,7 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
-		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: "default", UID: "uid-4"},
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-4"},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Image: hermesv1alpha1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
