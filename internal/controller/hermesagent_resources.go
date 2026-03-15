@@ -19,6 +19,7 @@ import (
 const (
 	configHashAnnotation = "hermes.nous.ai/config-hash"
 	hermesContainerName  = "hermes"
+	hermesGatewayMode    = "gateway"
 	hermesDataPath       = "/data"
 	hermesHomePath       = "/data/hermes"
 	hermesSecretBasePath = "/var/run/hermes/secrets"
@@ -210,9 +211,10 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Name:            "hermes",
+						Name:            hermesContainerName,
 						Image:           hermesImage(agent.Spec.Image),
 						ImagePullPolicy: agent.Spec.Image.PullPolicy,
+						Args:            hermesArgs(agent),
 						Env:             inputs.Env,
 						EnvFrom:         inputs.EnvFrom,
 						VolumeMounts:    volumeMounts,
@@ -281,6 +283,14 @@ func hermesImage(image hermesv1alpha1.HermesAgentImageSpec) string {
 		return image.Repository
 	}
 	return fmt.Sprintf("%s:%s", image.Repository, image.Tag)
+}
+
+func hermesArgs(agent *hermesv1alpha1.HermesAgent) []string {
+	mode := agent.Spec.Mode
+	if mode == "" {
+		mode = hermesGatewayMode
+	}
+	return []string{"hermes", mode}
 }
 
 func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {

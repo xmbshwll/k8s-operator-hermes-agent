@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -14,6 +15,16 @@ const (
 	testUpdatedConfig        = "model: openai/gpt-4.1-mini\n"
 	testPersistentVolumeSize = "25Gi"
 )
+
+func resourceMustParse(t *testing.T, value string) resource.Quantity {
+	t.Helper()
+
+	quantity, err := resource.ParseQuantity(value)
+	if err != nil {
+		t.Fatalf("ParseQuantity(%q) returned error: %v", value, err)
+	}
+	return quantity
+}
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
@@ -207,5 +218,54 @@ func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 	}
 	if !foundMount {
 		t.Fatal("expected StatefulSet container to mount the Hermes data volume at /data")
+	}
+}
+
+func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Mode = "gateway"
+	agent.Spec.Image.Repository = "ghcr.io/example/hermes-agent"
+	agent.Spec.Image.Tag = "gateway-core"
+	agent.Spec.Image.PullPolicy = corev1.PullIfNotPresent
+	agent.Spec.Resources = corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{
+			corev1.ResourceCPU:    resourceMustParse(t, "500m"),
+			corev1.ResourceMemory: resourceMustParse(t, "1Gi"),
+		},
+		Limits: corev1.ResourceList{
+			corev1.ResourceCPU:    resourceMustParse(t, "2"),
+			corev1.ResourceMemory: resourceMustParse(t, "4Gi"),
+		},
+	}
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	if statefulSet.Spec.Replicas == nil || *statefulSet.Spec.Replicas != 1 {
+		t.Fatalf("expected StatefulSet replicas to be 1, got %+v", statefulSet.Spec.Replicas)
+	}
+
+	container := statefulSet.Spec.Template.Spec.Containers[0]
+	if container.Name != hermesContainerName {
+		t.Fatalf("expected container name %q, got %q", hermesContainerName, container.Name)
+	}
+	if container.Image != "ghcr.io/example/hermes-agent:gateway-core" {
+		t.Fatalf("expected Hermes image ghcr.io/example/hermes-agent:gateway-core, got %q", container.Image)
+	}
+	if len(container.Args) != 2 || container.Args[0] != "hermes" || container.Args[1] != hermesGatewayMode {
+		t.Fatalf("expected Hermes args [hermes gateway], got %+v", container.Args)
+	}
+	if container.ImagePullPolicy != corev1.PullIfNotPresent {
+		t.Fatalf("expected image pull policy %q, got %q", corev1.PullIfNotPresent, container.ImagePullPolicy)
+	}
+	if container.Resources.Requests.Cpu().String() != "500m" {
+		t.Fatalf("expected CPU request 500m, got %s", container.Resources.Requests.Cpu().String())
+	}
+	if container.Resources.Limits.Memory().String() != "4Gi" {
+		t.Fatalf("expected memory limit 4Gi, got %s", container.Resources.Limits.Memory().String())
 	}
 }
