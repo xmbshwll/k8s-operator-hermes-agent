@@ -107,3 +107,43 @@ func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
 		t.Fatal("expected config hash to change when inline config changes")
 	}
 }
+
+func TestBuildStatefulSetIncludesConfigHashAnnotation(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.Raw = testInlineConfig
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	if statefulSet.Spec.Template.Annotations[configHashAnnotation] != plan.Hash {
+		t.Fatalf("expected StatefulSet pod template to include config hash %q, got %q", plan.Hash, statefulSet.Spec.Template.Annotations[configHashAnnotation])
+	}
+}
+
+func TestBuildStatefulSetUpdatesPodTemplateAnnotationWhenConfigChanges(t *testing.T) {
+	base := &hermesv1alpha1.HermesAgent{}
+	base.Name = testAgentName
+	base.Spec.Config.Raw = testInlineConfig
+
+	updated := base.DeepCopy()
+	updated.Spec.Config.Raw = testUpdatedConfig
+
+	basePlan, err := buildConfigPlan(base)
+	if err != nil {
+		t.Fatalf("buildConfigPlan(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlan(updated)
+	if err != nil {
+		t.Fatalf("buildConfigPlan(updated) returned error: %v", err)
+	}
+
+	baseStatefulSet := buildStatefulSet(base, buildPodTemplateInputs(base, basePlan))
+	updatedStatefulSet := buildStatefulSet(updated, buildPodTemplateInputs(updated, updatedPlan))
+	if baseStatefulSet.Spec.Template.Annotations[configHashAnnotation] == updatedStatefulSet.Spec.Template.Annotations[configHashAnnotation] {
+		t.Fatal("expected StatefulSet pod template annotation to change when config changes")
+	}
+}

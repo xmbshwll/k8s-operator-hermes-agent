@@ -8,7 +8,9 @@ import (
 	"maps"
 	"path"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -150,6 +152,44 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 	return inputs
 }
 
+func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
+	replicas := int32(1)
+	labels := resourceLabels(agent)
+
+	return &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name,
+			Namespace: agent.Namespace,
+			Labels:    labels,
+		},
+		Spec: appsv1.StatefulSetSpec{
+			Replicas:    &replicas,
+			ServiceName: agent.Name,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels:      labels,
+					Annotations: mergeStringMaps(nil, inputs.Annotations),
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Name:            "hermes",
+						Image:           hermesImage(agent.Spec.Image),
+						ImagePullPolicy: agent.Spec.Image.PullPolicy,
+						Env:             inputs.Env,
+						EnvFrom:         inputs.EnvFrom,
+						VolumeMounts:    inputs.VolumeMounts,
+						Resources:       agent.Spec.Resources,
+					}},
+					Volumes: inputs.Volumes,
+				},
+			},
+		},
+	}
+}
+
 func computeConfigHash(agent *hermesv1alpha1.HermesAgent, plan configPlan) string {
 	payload := struct {
 		Files      []resolvedConfigFile          `json:"files"`
@@ -199,6 +239,13 @@ func configVolumeName(id string) string {
 
 func generatedConfigMapName(resourceName, id string) string {
 	return fmt.Sprintf("%s-%s", resourceName, id)
+}
+
+func hermesImage(image hermesv1alpha1.HermesAgentImageSpec) string {
+	if image.Tag == "" {
+		return image.Repository
+	}
+	return fmt.Sprintf("%s:%s", image.Repository, image.Tag)
 }
 
 func sourceFieldName(id string) string {

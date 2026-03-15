@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	api "k8s.io/apimachinery/pkg/api/meta"
@@ -47,6 +48,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current HermesAgent config state toward the desired state.
 func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -84,6 +86,10 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	inputs := buildPodTemplateInputs(agent, plan)
+	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	log.Info("Reconciled HermesAgent config",
 		"name", agent.Name,
 		"generatedConfigMaps", countGeneratedFiles(plan.Files),
@@ -107,6 +113,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&hermesv1alpha1.HermesAgent{}).
 		Owns(&corev1.ConfigMap{}).
+		Owns(&appsv1.StatefulSet{}).
 		Named("hermesagent").
 		Complete(r)
 }
@@ -120,6 +127,20 @@ func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, ag
 		configMap.Labels = mergeStringMaps(configMap.Labels, resourceLabels(agent))
 		configMap.Data = map[string]string{file.ConfigMapKey: file.Content}
 		return controllerutil.SetControllerReference(agent, configMap, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) error {
+	statefulSet := &appsv1.StatefulSet{}
+	statefulSet.Namespace = agent.Namespace
+	statefulSet.Name = agent.Name
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, statefulSet, func() error {
+		desired := buildStatefulSet(agent, inputs)
+		statefulSet.Labels = mergeStringMaps(statefulSet.Labels, desired.Labels)
+		statefulSet.Spec = desired.Spec
+		return controllerutil.SetControllerReference(agent, statefulSet, r.Scheme)
 	})
 	return err
 }
