@@ -1,0 +1,81 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hermesagent-telegram-secrets
+  labels:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    app.kubernetes.io/managed-by: kubectl
+stringData:
+  OPENROUTER_API_KEY: sk-or-replace-me
+  TELEGRAM_BOT_TOKEN: 123456789:replace-me
+  TELEGRAM_ALLOWED_USERS: "123456789"
+  TELEGRAM_HOME_CHANNEL: "-1001234567890"
+  TELEGRAM_HOME_CHANNEL_NAME: "Ops"
+type: Opaque
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: hermesagent-telegram
+  labels:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  image:
+    repository: ghcr.io/example/hermes-agent
+    tag: gateway-core
+    pullPolicy: IfNotPresent
+  mode: gateway
+  config:
+    raw: |
+      model: openrouter/anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+      display:
+        tool_progress: new
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {
+          "telegram": {}
+        },
+        "reset_by_platform": {
+          "telegram": {
+            "mode": "idle",
+            "idle_minutes": 240
+          }
+        }
+      }
+  envFrom:
+    - secretRef:
+        name: hermesagent-telegram-secrets
+  storage:
+    persistence:
+      enabled: true
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+  terminal:
+    backend: local
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  probes:
+    startup:
+      enabled: true
+      periodSeconds: 10
+    readiness:
+      enabled: true
+      periodSeconds: 10
+    liveness:
+      enabled: true
+      periodSeconds: 10
+    requireConnectedPlatform: true
+  service:
+    enabled: false
+  networkPolicy:
+    enabled: true

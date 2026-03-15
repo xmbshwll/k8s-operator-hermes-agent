@@ -120,9 +120,15 @@ kubectl get crd hermesagents.hermes.nous.ai
 
 ## Deploy a sample HermesAgent
 
-A sample resource is included at [`config/samples/hermes_v1alpha1_hermesagent.yaml`](config/samples/hermes_v1alpha1_hermesagent.yaml).
+Sample manifests live under [`config/samples/`](config/samples/).
 
-Before applying it, update the Hermes runtime image:
+Start with the minimal sample at [`config/samples/hermes_v1alpha1_hermesagent.yaml`](config/samples/hermes_v1alpha1_hermesagent.yaml).
+For other real deployment paths, see:
+- [`config/samples/README.md`](config/samples/README.md)
+- [`config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`](config/samples/hermes_v1alpha1_hermesagent_telegram.yaml)
+- [`config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`](config/samples/hermes_v1alpha1_hermesagent_ssh.yaml)
+
+Before applying the minimal sample, update the Hermes runtime image:
 
 ```yaml
 spec:
@@ -225,7 +231,8 @@ helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
 ## Documentation
 
 - [Architecture notes](docs/architecture.md)
-- [Sample HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)
+- [Sample catalog](config/samples/README.md)
+- [Minimal HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)
 
 ## License
 
