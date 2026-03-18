@@ -361,26 +361,21 @@ spec:
                     description: liveness configures the liveness probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer
@@ -389,26 +384,21 @@ spec:
                     description: readiness configures the readiness probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer
@@ -421,26 +411,21 @@ spec:
                     description: startup configures the startup probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer

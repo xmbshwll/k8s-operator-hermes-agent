@@ -1,0 +1,22 @@
+# This NetworkPolicy allows ingress traffic to the webhook server that runs
+# inside the controller-manager pod. Admission requests originate from the
+# Kubernetes API server, so the policy must allow webhook traffic broadly.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  labels:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    app.kubernetes.io/managed-by: kustomize
+  name: allow-webhook-traffic
+  namespace: system
+spec:
+  podSelector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: k8s-operator-hermes-agent
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 9443
+          protocol: TCP

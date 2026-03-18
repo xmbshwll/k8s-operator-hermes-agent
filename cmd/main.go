@@ -37,6 +37,7 @@ import (
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 	"github.com/xmbshwll/k8s-operator-hermes-agent/internal/controller"
+	webhookv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/internal/webhook/v1alpha1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -184,6 +185,13 @@ func main() {
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "HermesAgent")
 		os.Exit(1)
+	}
+	// nolint:goconst
+	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+		if err := webhookv1alpha1.SetupHermesAgentWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create webhook", "webhook", "HermesAgent")
+			os.Exit(1)
+		}
 	}
 	// +kubebuilder:scaffold:builder
 

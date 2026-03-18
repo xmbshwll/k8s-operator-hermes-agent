@@ -38,6 +38,8 @@ helm install k8s-operator-hermes-agent \
 The packaged release chart already points at the matching published controller image.
 End users do not need to rebuild the operator image or override `image.repository` / `image.tag` for normal installs.
 
+Published releases enable admission webhooks by default, so the target cluster must already have cert-manager installed.
+
 ### GitHub release bundle
 
 ```sh
@@ -46,6 +48,7 @@ kubectl apply -f \
 ```
 
 The release bundle is generated with the same versioned controller image used by the chart.
+It also expects cert-manager to be installed before applying the bundle because the deployment includes webhook certificate resources.
 
 ## How to cut a release
 

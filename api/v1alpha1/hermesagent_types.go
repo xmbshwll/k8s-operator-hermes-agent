@@ -85,26 +85,21 @@ type HermesAgentTerminalSpec struct {
 // HermesAgentProbeSpec configures a single probe profile.
 type HermesAgentProbeSpec struct {
 	// enabled controls whether this probe is configured.
-	// +kubebuilder:default:=true
 	Enabled *bool `json:"enabled,omitempty"`
 
 	// initialDelaySeconds is the probe initial delay.
-	// +kubebuilder:default:=5
 	// +optional
 	InitialDelaySeconds int32 `json:"initialDelaySeconds,omitempty"`
 
 	// periodSeconds is the probe period.
-	// +kubebuilder:default:=10
 	// +optional
 	PeriodSeconds int32 `json:"periodSeconds,omitempty"`
 
 	// timeoutSeconds is the probe timeout.
-	// +kubebuilder:default:=5
 	// +optional
 	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
 
 	// failureThreshold is the probe failure threshold.
-	// +kubebuilder:default:=3
 	// +optional
 	FailureThreshold int32 `json:"failureThreshold,omitempty"`
 }

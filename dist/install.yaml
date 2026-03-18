@@ -369,26 +369,21 @@ spec:
                     description: liveness configures the liveness probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer
@@ -397,26 +392,21 @@ spec:
                     description: readiness configures the readiness probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer
@@ -429,26 +419,21 @@ spec:
                     description: startup configures the startup probe.
                     properties:
                       enabled:
-                        default: true
                         description: enabled controls whether this probe is configured.
                         type: boolean
                       failureThreshold:
-                        default: 3
                         description: failureThreshold is the probe failure threshold.
                         format: int32
                         type: integer
                       initialDelaySeconds:
-                        default: 5
                         description: initialDelaySeconds is the probe initial delay.
                         format: int32
                         type: integer
                       periodSeconds:
-                        default: 10
                         description: periodSeconds is the probe period.
                         format: int32
                         type: integer
                       timeoutSeconds:
-                        default: 5
                         description: timeoutSeconds is the probe timeout.
                         format: int32
                         type: integer
@@ -975,6 +960,23 @@ spec:
     app.kubernetes.io/name: k8s-operator-hermes-agent
     control-plane: controller-manager
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+  name: k8s-operator-hermes-agent-webhook-service
+  namespace: k8s-operator-hermes-agent-system
+spec:
+  ports:
+  - port: 443
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    control-plane: controller-manager
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1003,6 +1005,7 @@ spec:
         - --metrics-bind-address=:8443
         - --leader-elect
         - --health-probe-bind-address=:8081
+        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         command:
         - /manager
         image: controller:latest
@@ -1013,7 +1016,10 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
-        ports: []
+        ports:
+        - containerPort: 9443
+          name: webhook-server
+          protocol: TCP
         readinessProbe:
           httpGet:
             path: /readyz
@@ -1033,11 +1039,118 @@ spec:
             drop:
             - ALL
           readOnlyRootFilesystem: true
-        volumeMounts: []
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-certs
+          readOnly: true
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: k8s-operator-hermes-agent-controller-manager
       terminationGracePeriodSeconds: 10
-      volumes: []
+      volumes:
+      - name: webhook-certs
+        secret:
+          secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+  name: k8s-operator-hermes-agent-metrics-certs
+  namespace: k8s-operator-hermes-agent-system
+spec:
+  dnsNames:
+  - SERVICE_NAME.SERVICE_NAMESPACE.svc
+  - SERVICE_NAME.SERVICE_NAMESPACE.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: k8s-operator-hermes-agent-selfsigned-issuer
+  secretName: metrics-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+  name: k8s-operator-hermes-agent-serving-cert
+  namespace: k8s-operator-hermes-agent-system
+spec:
+  dnsNames:
+  - k8s-operator-hermes-agent-webhook-service.k8s-operator-hermes-agent-system.svc
+  - k8s-operator-hermes-agent-webhook-service.k8s-operator-hermes-agent-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: k8s-operator-hermes-agent-selfsigned-issuer
+  secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+  name: k8s-operator-hermes-agent-selfsigned-issuer
+  namespace: k8s-operator-hermes-agent-system
+spec:
+  selfSigned: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: k8s-operator-hermes-agent-system/k8s-operator-hermes-agent-serving-cert
+  name: k8s-operator-hermes-agent-mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: k8s-operator-hermes-agent-webhook-service
+      namespace: k8s-operator-hermes-agent-system
+      path: /mutate-hermes-nous-ai-v1alpha1-hermesagent
+  failurePolicy: Fail
+  name: mhermesagent-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - hermes.nous.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - hermesagents
+  sideEffects: None
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  annotations:
+    cert-manager.io/inject-ca-from: k8s-operator-hermes-agent-system/k8s-operator-hermes-agent-serving-cert
+  name: k8s-operator-hermes-agent-validating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: k8s-operator-hermes-agent-webhook-service
+      namespace: k8s-operator-hermes-agent-system
+      path: /validate-hermes-nous-ai-v1alpha1-hermesagent
+  failurePolicy: Fail
+  name: vhermesagent-v1alpha1.kb.io
+  rules:
+  - apiGroups:
+    - hermes.nous.ai
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - hermesagents
+  sideEffects: None

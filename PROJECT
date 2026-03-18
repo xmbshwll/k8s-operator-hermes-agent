@@ -9,7 +9,7 @@ layout:
 plugins:
   helm.kubebuilder.io/v2-alpha:
     manifests: dist/install.yaml
-    output: charts
+    output: dist
 projectName: k8s-operator-hermes-agent
 repo: github.com/xmbshwll/k8s-operator-hermes-agent
 resources:
@@ -22,4 +22,8 @@ resources:
   kind: HermesAgent
   path: github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1
   version: v1alpha1
+  webhooks:
+    defaulting: true
+    validation: true
+    webhookVersion: v1
 version: "3"

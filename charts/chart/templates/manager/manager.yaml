@@ -37,6 +37,9 @@ spec:
         {{- if .Values.leaderElection.enabled }}
         - --leader-elect
         {{- end }}
+        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+        {{- end }}
         command:
         - /manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -48,7 +51,12 @@ spec:
           initialDelaySeconds: 15
           periodSeconds: 20
         name: manager
-        ports: []
+        ports:
+        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        - containerPort: {{ .Values.webhook.port }}
+          name: webhook-server
+          protocol: TCP
+        {{- end }}
         readinessProbe:
           httpGet:
             path: /readyz
@@ -67,11 +75,21 @@ spec:
             drop:
             - ALL
           readOnlyRootFilesystem: true
-        volumeMounts: []
+        volumeMounts:
+        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: webhook-certs
+          readOnly: true
+        {{- end }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: {{ include "k8s-operator-hermes-agent.serviceAccountName" . }}
       terminationGracePeriodSeconds: 10
-      volumes: []
+      volumes:
+      {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+      - name: webhook-certs
+        secret:
+          secretName: webhook-server-cert
+      {{- end }}

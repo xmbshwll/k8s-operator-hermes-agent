@@ -104,6 +104,14 @@ The operator separates file-like config from environment-driven config.
 
 This lets users keep credentials in Kubernetes `Secret` resources instead of embedding them into inline config blobs.
 
+## Admission and defaulting model
+
+`HermesAgent` uses admission webhooks for both mutating defaults and validating cross-field rules.
+This keeps invalid specs out of the cluster instead of relying on the reconciler to notice bad input later.
+
+The webhook is responsible for defaults that are awkward or impossible to express cleanly with OpenAPI markers alone, especially probe-profile defaults that differ between startup, readiness, and liveness.
+It also enforces cross-field rules such as mutually exclusive config sources and complete object references.
+
 ## Probes and health model
 
 The operator uses exec probes rather than HTTP probes for Hermes itself.
@@ -152,8 +160,11 @@ Operator installation is packaged as a Helm chart under `charts/chart/`.
 The chart installs:
 - the `HermesAgent` CRD
 - the controller deployment
+- mutating and validating admission webhooks
 - controller RBAC
 - the metrics service
+
+Webhook-enabled installs require cert-manager in the cluster so the webhook serving certificate can be issued and the CA bundle can be injected into the webhook configurations.
 
 Install-time values are intentionally minimal:
 - operator image repository, tag, and pull policy

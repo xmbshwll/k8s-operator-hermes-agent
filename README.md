@@ -46,6 +46,7 @@ The controller then reconciles:
 - kubectl
 - Access to a Kubernetes cluster
 - Helm 4 for chart installation
+- cert-manager in the target cluster when admission webhooks are enabled
 
 ## Key concepts
 
@@ -97,6 +98,8 @@ helm install k8s-operator-hermes-agent \
 The published chart already points at the matching released controller image.
 You do not need to build the operator image locally for a normal install.
 
+Published installs enable admission webhooks and require cert-manager to already be installed in the cluster so webhook certificates can be issued and injected.
+
 ### 2. Install a published release with the YAML bundle
 
 ```sh
@@ -107,6 +110,7 @@ kubectl apply -f \
 This installs:
 - the `HermesAgent` CRD
 - the operator deployment
+- admission webhook configuration
 - RBAC for the controller
 - the metrics service
 
@@ -125,6 +129,7 @@ make helm-deploy IMG=<registry>/k8s-operator-hermes-agent:<tag>
 ```
 
 By default this installs into `k8s-operator-hermes-agent-system`.
+For webhook-enabled installs, make sure cert-manager is already running in the cluster.
 Override the namespace when needed:
 
 ```sh
@@ -197,6 +202,19 @@ Environment and secrets are handled separately:
 
 Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
 That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
+
+## Admission and defaulting
+
+`HermesAgent` now uses admission webhooks for both defaulting and validation.
+That means invalid specs are rejected on create and update instead of being accepted and then failing later in reconcile status.
+
+The webhook currently enforces and/or defaults:
+- `raw` and `configMapRef` are mutually exclusive for `spec.config` and `spec.gatewayConfig`
+- referenced config keys must include both `name` and `key`
+- `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` must use complete references
+- storage sizes must be valid Kubernetes quantities greater than zero
+- enabled services must use a positive port
+- runtime defaults for mode, image tag/pull policy, persistence, service settings, network policy, and probe profiles
 
 ## Persistence model
 

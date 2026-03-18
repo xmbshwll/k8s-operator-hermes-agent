@@ -37,6 +37,9 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		_, err := kubectl("label", "--overwrite", "ns", namespace, "pod-security.kubernetes.io/enforce=restricted")
 		Expect(err).NotTo(HaveOccurred())
 
+		By("installing cert-manager for webhook certificates")
+		Expect(utils.InstallCertManager()).To(Succeed())
+
 		By("installing the HermesAgent CRD")
 		_, err = utils.Run(exec.Command("make", "install"))
 		Expect(err).NotTo(HaveOccurred())
@@ -77,6 +80,9 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 
 		By("removing the manager namespace")
 		_, _ = kubectl("delete", "ns", namespace, "--ignore-not-found=true", "--timeout=2m")
+
+		By("removing cert-manager")
+		utils.UninstallCertManager()
 
 		if manifestPath != "" {
 			_ = os.Remove(manifestPath)

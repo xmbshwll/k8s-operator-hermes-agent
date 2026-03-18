@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  test-e2e:
+  test-chart:
     name: Run on Ubuntu
     runs-on: ubuntu-latest
     steps:
@@ -38,33 +38,22 @@ jobs:
       - name: Install Helm
         run: make install-helm
 
-      - name: Lint Helm Chart
+      - name: Install cert-manager via Helm
         run: |
-          helm lint ./charts/chart
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait \
+            --timeout 300s
 
-# TODO: Uncomment if cert-manager is enabled
-#      - name: Install cert-manager via Helm (wait for readiness)
-#        run: |
-#          helm repo add jetstack https://charts.jetstack.io
-#          helm repo update
-#          helm install cert-manager jetstack/cert-manager \
-#            --namespace cert-manager \
-#            --create-namespace \
-#            --set crds.enabled=true \
-#            --wait \
-#            --timeout 300s
-
-# TODO: Uncomment if Prometheus is enabled
-#      - name: Install Prometheus Operator CRDs
-#        run: |
-#          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-#          helm repo update
-#          helm install prometheus-crds prometheus-community/prometheus-operator-crds
+      - name: Lint Helm chart
+        run: helm lint ./charts/chart
 
       - name: Deploy manager via Helm
-        run: |
-          make helm-deploy IMG=controller:latest
+        run: make helm-deploy IMG=controller:latest
 
       - name: Check Helm release status
-        run: |
-          make helm-status
+        run: make helm-status
