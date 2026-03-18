@@ -84,25 +84,24 @@ The controller mounts:
 
 ## Install the operator
 
-### 1. Build and push the operator image
+### 1. Install a published release with Helm
 
 ```sh
-make docker-build docker-push IMG=<registry>/k8s-operator-hermes-agent:<tag>
+helm install k8s-operator-hermes-agent \
+  oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
+  --version 0.1.0 \
+  --namespace k8s-operator-hermes-agent-system \
+  --create-namespace
 ```
 
-### 2. Install with Helm
+The published chart already points at the matching released controller image.
+You do not need to build the operator image locally for a normal install.
+
+### 2. Install a published release with the YAML bundle
 
 ```sh
-make helm-deploy IMG=<registry>/k8s-operator-hermes-agent:<tag>
-```
-
-By default this installs into `k8s-operator-hermes-agent-system`.
-Override the namespace when needed:
-
-```sh
-make helm-deploy \
-  IMG=<registry>/k8s-operator-hermes-agent:<tag> \
-  HELM_NAMESPACE=<namespace>
+kubectl apply -f \
+  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v0.1.0/install.yaml
 ```
 
 This installs:
@@ -116,6 +115,22 @@ This installs:
 ```sh
 kubectl get pods -n k8s-operator-hermes-agent-system
 kubectl get crd hermesagents.hermes.nous.ai
+```
+
+### 4. Build and install manually during development
+
+```sh
+make docker-build docker-push IMG=<registry>/k8s-operator-hermes-agent:<tag>
+make helm-deploy IMG=<registry>/k8s-operator-hermes-agent:<tag>
+```
+
+By default this installs into `k8s-operator-hermes-agent-system`.
+Override the namespace when needed:
+
+```sh
+make helm-deploy \
+  IMG=<registry>/k8s-operator-hermes-agent:<tag> \
+  HELM_NAMESPACE=<namespace>
 ```
 
 ## Deploy a sample HermesAgent
@@ -196,14 +211,18 @@ Delete any `HermesAgent` resources you created:
 kubectl delete -k config/samples/
 ```
 
-Then uninstall the operator release:
+Then uninstall the operator release.
+
+If you installed with Helm:
 
 ```sh
 make helm-uninstall
 ```
 
-The CRD is kept on uninstall so existing custom resources are not removed unexpectedly.
-If you want to remove the API entirely, delete the CRD manually after removing all `HermesAgent` resources.
+Helm uninstall keeps the CRD so existing custom resources are not removed unexpectedly.
+
+If you installed from the published bundle, `kubectl delete -f .../install.yaml` also deletes the CRD.
+Use that only if you want to remove the API entirely after deleting all `HermesAgent` resources.
 
 ## Development
 
@@ -214,6 +233,7 @@ make test
 make test-e2e
 make lint-fix
 make build-installer
+make package-chart
 ```
 
 `make test-e2e` creates a disposable Kind cluster, builds the operator image plus a lightweight Hermes-compatible runtime image, installs the operator, applies a sample `HermesAgent`, and validates readiness, PVC-backed persistence across restart, and config rollout behavior.
@@ -221,7 +241,7 @@ make build-installer
 Helm chart location:
 - `charts/chart/`
 
-Install directly from the chart:
+Install directly from the chart during development:
 
 ```sh
 helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
@@ -231,9 +251,20 @@ helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
   --set image.tag=<tag>
 ```
 
+Package a release-style chart locally:
+
+```sh
+make package-chart \
+  CHART_VERSION=0.1.0 \
+  CHART_APP_VERSION=0.1.0 \
+  CHART_IMAGE_REPOSITORY=ghcr.io/xmbshwll/k8s-operator-hermes-agent \
+  CHART_IMAGE_TAG=v0.1.0
+```
+
 ## Documentation
 
 - [Architecture notes](docs/architecture.md)
+- [Release workflow](docs/release.md)
 - [Sample catalog](config/samples/README.md)
 - [Minimal HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)
 

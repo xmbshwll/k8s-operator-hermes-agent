@@ -143,7 +143,9 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
+	tmp="$$(mktemp)"; cp config/manager/kustomization.yaml "$$tmp"; \
+	trap 'mv "$$tmp" config/manager/kustomization.yaml' EXIT; \
+	( cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG} ); \
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
 ##@ Deployment
@@ -266,6 +268,16 @@ HELM_RELEASE ?= k8s-operator-hermes-agent
 HELM_CHART_DIR ?= charts/chart
 ## Additional arguments to pass to helm commands
 HELM_EXTRA_ARGS ?=
+## Version to use when packaging the Helm chart
+CHART_VERSION ?= 0.1.0
+## App version to use when packaging the Helm chart
+CHART_APP_VERSION ?= $(CHART_VERSION)
+## Image repository baked into packaged Helm chart values
+CHART_IMAGE_REPOSITORY ?= controller
+## Image tag baked into packaged Helm chart values
+CHART_IMAGE_TAG ?= latest
+## Output directory for packaged Helm chart artifacts
+CHART_PACKAGE_DIR ?= dist/chart
 
 .PHONY: install-helm
 install-helm: ## Install the latest version of Helm.
@@ -273,6 +285,17 @@ install-helm: ## Install the latest version of Helm.
 		echo "Installing Helm..." && \
 		curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | bash; \
 	}
+
+.PHONY: package-chart
+package-chart: install-helm ## Package the Helm chart into CHART_PACKAGE_DIR with release metadata.
+	mkdir -p "$(CHART_PACKAGE_DIR)"
+	rm -rf "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")"
+	cp -R "$(HELM_CHART_DIR)" "$(CHART_PACKAGE_DIR)/"
+	sed -i.bak -e 's/^version: .*/version: $(CHART_VERSION)/' -e 's/^appVersion: .*/appVersion: "$(CHART_APP_VERSION)"/' "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")/Chart.yaml"
+	sed -i.bak -e 's|^  repository: .*|  repository: $(CHART_IMAGE_REPOSITORY)|' -e 's/^  tag: .*/  tag: $(CHART_IMAGE_TAG)/' "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")/values.yaml"
+	rm -f "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")/Chart.yaml.bak" "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")/values.yaml.bak"
+	$(HELM) lint "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")"
+	$(HELM) package "$(CHART_PACKAGE_DIR)/$$(basename "$(HELM_CHART_DIR)")" --destination "$(CHART_PACKAGE_DIR)"
 
 .PHONY: helm-deploy
 helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify an image with IMG.

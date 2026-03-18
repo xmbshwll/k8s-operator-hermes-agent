@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Publish release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Derive release metadata
+        id: vars
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          repository_path="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          owner_path="$(dirname "${repository_path}")"
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "image_repo=ghcr.io/${repository_path}" >> "${GITHUB_OUTPUT}"
+          echo "chart_repo=oci://ghcr.io/${owner_path}/charts" >> "${GITHUB_OUTPUT}"
+
+      - name: Login to GHCR for container image
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push controller image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Install Helm
+        run: make install-helm
+
+      - name: Build installer bundle
+        run: make build-installer IMG=${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.tag }}
+
+      - name: Package Helm chart
+        run: |
+          make package-chart \
+            CHART_VERSION=${{ steps.vars.outputs.version }} \
+            CHART_APP_VERSION=${{ steps.vars.outputs.version }} \
+            CHART_IMAGE_REPOSITORY=${{ steps.vars.outputs.image_repo }} \
+            CHART_IMAGE_TAG=${{ steps.vars.outputs.tag }}
+
+      - name: Publish Helm chart to GHCR OCI
+        run: |
+          helm registry login ghcr.io -u "${{ github.actor }}" --password "${{ secrets.GITHUB_TOKEN }}"
+          helm push dist/chart/k8s-operator-hermes-agent-${{ steps.vars.outputs.version }}.tgz ${{ steps.vars.outputs.chart_repo }}
+
+      - name: Generate release checksums
+        run: |
+          chart_file="k8s-operator-hermes-agent-${{ steps.vars.outputs.version }}.tgz"
+          (
+            cd dist
+            sha256sum install.yaml "chart/${chart_file}" | awk '{ name = $2; sub(/^chart\//, "", name); print $1 "  " name }' > SHA256SUMS
+          )
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/install.yaml
+            dist/chart/k8s-operator-hermes-agent-${{ steps.vars.outputs.version }}.tgz
+            dist/SHA256SUMS
