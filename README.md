@@ -188,11 +188,15 @@ Each file can be supplied in one of two ways:
 
 2. **Existing ConfigMap reference** via `configMapRef`
    - the controller mounts the referenced key directly
+   - referenced `ConfigMap` changes trigger a reconcile and `StatefulSet` rollout so the subPath-mounted file is refreshed safely
 
 Environment and secrets are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
 - `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`
+
+Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
+That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
 
 ## Persistence model
 

@@ -2,6 +2,7 @@ package controller
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -59,6 +60,23 @@ type configPlan struct {
 	Hash  string
 }
 
+type referencedInputState struct {
+	FileRefs     []referencedObjectSnapshot `json:"fileRefs,omitempty"`
+	EnvValueRefs []referencedObjectSnapshot `json:"envValueRefs,omitempty"`
+	EnvFrom      []referencedObjectSnapshot `json:"envFrom,omitempty"`
+	SecretRefs   []referencedObjectSnapshot `json:"secretRefs,omitempty"`
+}
+
+type referencedObjectSnapshot struct {
+	Kind     string            `json:"kind"`
+	Name     string            `json:"name"`
+	Key      string            `json:"key,omitempty"`
+	Optional bool              `json:"optional,omitempty"`
+	Present  bool              `json:"present"`
+	KeyFound bool              `json:"keyFound,omitempty"`
+	Data     map[string]string `json:"data,omitempty"`
+}
+
 type podTemplateInputs struct {
 	Annotations  map[string]string
 	Env          []corev1.EnvVar
@@ -68,6 +86,10 @@ type podTemplateInputs struct {
 }
 
 func buildConfigPlan(agent *hermesv1alpha1.HermesAgent) (configPlan, error) {
+	return buildConfigPlanWithReferences(agent, referencedInputState{})
+}
+
+func buildConfigPlanWithReferences(agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) (configPlan, error) {
 	files := []resolvedConfigFile{}
 
 	configFile, err := resolveConfigFile(agent, "config", "config.yaml", agent.Spec.Config)
@@ -87,7 +109,7 @@ func buildConfigPlan(agent *hermesv1alpha1.HermesAgent) (configPlan, error) {
 	}
 
 	plan := configPlan{Files: files}
-	plan.Hash = computeConfigHash(agent, plan)
+	plan.Hash = computeConfigHash(agent, plan, referencedInputs)
 	return plan, nil
 }
 
@@ -317,22 +339,145 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 	}
 }
 
-func computeConfigHash(agent *hermesv1alpha1.HermesAgent, plan configPlan) string {
+func computeConfigHash(agent *hermesv1alpha1.HermesAgent, plan configPlan, referencedInputs referencedInputState) string {
 	payload := struct {
-		Files      []resolvedConfigFile          `json:"files"`
-		Env        []corev1.EnvVar               `json:"env"`
-		EnvFrom    []corev1.EnvFromSource        `json:"envFrom"`
-		SecretRefs []corev1.LocalObjectReference `json:"secretRefs"`
+		Files            []resolvedConfigFile          `json:"files"`
+		Env              []corev1.EnvVar               `json:"env"`
+		EnvFrom          []corev1.EnvFromSource        `json:"envFrom"`
+		SecretRefs       []corev1.LocalObjectReference `json:"secretRefs"`
+		ReferencedInputs referencedInputState          `json:"referencedInputs,omitempty"`
 	}{
-		Files:      plan.Files,
-		Env:        agent.Spec.Env,
-		EnvFrom:    agent.Spec.EnvFrom,
-		SecretRefs: agent.Spec.SecretRefs,
+		Files:            plan.Files,
+		Env:              agent.Spec.Env,
+		EnvFrom:          agent.Spec.EnvFrom,
+		SecretRefs:       agent.Spec.SecretRefs,
+		ReferencedInputs: referencedInputs,
 	}
 
 	encoded, _ := json.Marshal(payload)
 	sum := sha256.Sum256(encoded)
 	return hex.EncodeToString(sum[:])
+}
+
+func newConfigMapFileSnapshot(name, key string, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:    "ConfigMap",
+		Name:    name,
+		Key:     key,
+		Present: configMap != nil,
+	}
+	if configMap == nil {
+		return snapshot
+	}
+
+	content, ok := configMapFileValue(configMap, key)
+	snapshot.KeyFound = ok
+	if ok {
+		snapshot.Data = map[string]string{key: content}
+	}
+	return snapshot
+}
+
+func newConfigMapKeySnapshot(name, key string, optional bool, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:     "ConfigMap",
+		Name:     name,
+		Key:      key,
+		Optional: optional,
+		Present:  configMap != nil,
+	}
+	if configMap == nil {
+		return snapshot
+	}
+
+	value, ok := configMapFileValue(configMap, key)
+	snapshot.KeyFound = ok
+	if ok {
+		snapshot.Data = map[string]string{key: value}
+	}
+	return snapshot
+}
+
+func newConfigMapEnvFromSnapshot(name string, optional bool, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:     "ConfigMap",
+		Name:     name,
+		Optional: optional,
+		Present:  configMap != nil,
+	}
+	if configMap != nil {
+		snapshot.Data = copyStringMap(configMap.Data)
+	}
+	return snapshot
+}
+
+func newSecretKeySnapshot(name, key string, optional bool, secret *corev1.Secret) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:     "Secret",
+		Name:     name,
+		Key:      key,
+		Optional: optional,
+		Present:  secret != nil,
+	}
+	if secret == nil {
+		return snapshot
+	}
+
+	value, ok := secret.Data[key]
+	snapshot.KeyFound = ok
+	if ok {
+		snapshot.Data = map[string]string{key: base64.StdEncoding.EncodeToString(value)}
+	}
+	return snapshot
+}
+
+func newSecretSnapshot(name string, optional bool, secret *corev1.Secret) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:     "Secret",
+		Name:     name,
+		Optional: optional,
+		Present:  secret != nil,
+	}
+	if secret != nil {
+		snapshot.Data = encodeSecretData(secret.Data)
+	}
+	return snapshot
+}
+
+func configMapFileValue(configMap *corev1.ConfigMap, key string) (string, bool) {
+	if value, ok := configMap.Data[key]; ok {
+		return value, true
+	}
+	if value, ok := configMap.BinaryData[key]; ok {
+		return base64.StdEncoding.EncodeToString(value), true
+	}
+	return "", false
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	copied := make(map[string]string, len(values))
+	maps.Copy(copied, values)
+	return copied
+}
+
+func encodeSecretData(values map[string][]byte) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+
+	encoded := make(map[string]string, len(values))
+	for key, value := range values {
+		encoded[key] = base64.StdEncoding.EncodeToString(value)
+	}
+	return encoded
+}
+
+func optionalValue(value *bool) bool {
+	return value != nil && *value
 }
 
 func resourceLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {

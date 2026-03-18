@@ -242,6 +242,69 @@ func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
 	}
 }
 
+func TestConfigHashChangesWhenReferencedConfigMapContentChanges(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
+		Key:                  "config.yaml",
+	}
+
+	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileRefs: []referencedObjectSnapshot{newConfigMapFileSnapshot("shared-config", "config.yaml", &corev1.ConfigMap{Data: map[string]string{"config.yaml": testInlineConfig}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileRefs: []referencedObjectSnapshot{newConfigMapFileSnapshot("shared-config", "config.yaml", &corev1.ConfigMap{Data: map[string]string{"config.yaml": testUpdatedConfig}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(updated) returned error: %v", err)
+	}
+	if basePlan.Hash == updatedPlan.Hash {
+		t.Fatal("expected config hash to change when referenced ConfigMap content changes")
+	}
+}
+
+func TestConfigHashChangesWhenReferencedSecretContentChanges(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Env = []corev1.EnvVar{{
+		Name: "API_TOKEN",
+		ValueFrom: &corev1.EnvVarSource{
+			SecretKeyRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "provider-secret"},
+				Key:                  "token",
+			},
+		},
+	}}
+	agent.Spec.EnvFrom = []corev1.EnvFromSource{{
+		SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},
+	}}
+	agent.Spec.SecretRefs = []corev1.LocalObjectReference{{Name: "ssh-auth"}}
+
+	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		EnvValueRefs: []referencedObjectSnapshot{newSecretKeySnapshot("provider-secret", "token", false, &corev1.Secret{Data: map[string][]byte{"token": []byte("alpha")}})},
+		EnvFrom:      []referencedObjectSnapshot{newSecretSnapshot("provider-env", false, &corev1.Secret{Data: map[string][]byte{"TOKEN": []byte("alpha")}})},
+		SecretRefs:   []referencedObjectSnapshot{newSecretSnapshot("ssh-auth", false, &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("first")}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		EnvValueRefs: []referencedObjectSnapshot{newSecretKeySnapshot("provider-secret", "token", false, &corev1.Secret{Data: map[string][]byte{"token": []byte("beta")}})},
+		EnvFrom:      []referencedObjectSnapshot{newSecretSnapshot("provider-env", false, &corev1.Secret{Data: map[string][]byte{"TOKEN": []byte("beta")}})},
+		SecretRefs:   []referencedObjectSnapshot{newSecretSnapshot("ssh-auth", false, &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("second")}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(updated) returned error: %v", err)
+	}
+	if basePlan.Hash == updatedPlan.Hash {
+		t.Fatal("expected config hash to change when referenced Secret content changes")
+	}
+}
+
 func TestBuildStatefulSetIncludesConfigHashAnnotation(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName

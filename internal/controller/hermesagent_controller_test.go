@@ -93,6 +93,222 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 	}
 }
 
+func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
+		Data:       map[string]string{"config.yaml": testInlineConfig},
+	}
+	providerSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "provider-env", Namespace: testNamespace},
+		Data:       map[string][]byte{"TOKEN": []byte("alpha")},
+	}
+	providerSecretKey := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "provider-secret", Namespace: testNamespace},
+		Data:       map[string][]byte{"token": []byte("alpha")},
+	}
+	sshSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ssh-auth", Namespace: testNamespace},
+		Data:       map[string][]byte{"id_ed25519": []byte("first")},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
+				Key:                  "config.yaml",
+			}},
+			Env: []corev1.EnvVar{{
+				Name: "API_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: providerSecretKey.Name},
+						Key:                  "token",
+					},
+				},
+			}},
+			EnvFrom: []corev1.EnvFromSource{{
+				SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: providerSecret.Name}},
+			}},
+			SecretRefs: []corev1.LocalObjectReference{{Name: sshSecret.Name}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, configMap, providerSecret, providerSecretKey, sshSecret).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("first reconcile returned error: %v", err)
+	}
+
+	var initialStatefulSet appsv1.StatefulSet
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &initialStatefulSet); err != nil {
+		t.Fatalf("get initial StatefulSet returned error: %v", err)
+	}
+	initialHash := initialStatefulSet.Spec.Template.Annotations[configHashAnnotation]
+	if initialHash == "" {
+		t.Fatal("expected initial StatefulSet pod template annotation to include config hash")
+	}
+
+	configMap.Data["config.yaml"] = testUpdatedConfig
+	if err := k8sClient.Update(context.Background(), configMap); err != nil {
+		t.Fatalf("update ConfigMap returned error: %v", err)
+	}
+	providerSecret.Data["TOKEN"] = []byte("beta")
+	if err := k8sClient.Update(context.Background(), providerSecret); err != nil {
+		t.Fatalf("update env Secret returned error: %v", err)
+	}
+	providerSecretKey.Data["token"] = []byte("beta")
+	if err := k8sClient.Update(context.Background(), providerSecretKey); err != nil {
+		t.Fatalf("update env key Secret returned error: %v", err)
+	}
+	sshSecret.Data["id_ed25519"] = []byte("second")
+	if err := k8sClient.Update(context.Background(), sshSecret); err != nil {
+		t.Fatalf("update mounted Secret returned error: %v", err)
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second reconcile returned error: %v", err)
+	}
+
+	var updatedStatefulSet appsv1.StatefulSet
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &updatedStatefulSet); err != nil {
+		t.Fatalf("get updated StatefulSet returned error: %v", err)
+	}
+	updatedHash := updatedStatefulSet.Spec.Template.Annotations[configHashAnnotation]
+	if updatedHash == "" {
+		t.Fatal("expected updated StatefulSet pod template annotation to include config hash")
+	}
+	if initialHash == updatedHash {
+		t.Fatalf("expected StatefulSet pod template config hash to change when referenced inputs change, got %q", updatedHash)
+	}
+}
+
+func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+
+	referencingAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "references-configmap", Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
+				Key:                  "config.yaml",
+			}},
+			Env: []corev1.EnvVar{{
+				Name: "MODEL",
+				ValueFrom: &corev1.EnvVarSource{
+					ConfigMapKeyRef: &corev1.ConfigMapKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
+						Key:                  "model",
+					},
+				},
+			}},
+		},
+	}
+	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-configmap", Namespace: testNamespace},
+	}
+	otherNamespaceAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "other-namespace", Namespace: "other"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
+				Key:                  "config.yaml",
+			}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(referencingAgent, nonReferencingAgent, otherNamespaceAgent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	requests := reconciler.findAgentsForConfigMap(context.Background(), &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace}})
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 reconcile request, got %d", len(requests))
+	}
+	if requests[0].NamespacedName != client.ObjectKeyFromObject(referencingAgent) {
+		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests[0].NamespacedName)
+	}
+}
+
+func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+
+	referencingAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "references-secret", Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Env: []corev1.EnvVar{{
+				Name: "API_TOKEN",
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"},
+						Key:                  "token",
+					},
+				},
+			}},
+			EnvFrom:    []corev1.EnvFromSource{{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"}}}},
+			SecretRefs: []corev1.LocalObjectReference{{Name: "shared-secret"}},
+		},
+	}
+	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-secret", Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"}}}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(referencingAgent, nonReferencingAgent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	requests := reconciler.findAgentsForSecret(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "shared-secret", Namespace: testNamespace}})
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 reconcile request, got %d", len(requests))
+	}
+	if requests[0].NamespacedName != client.ObjectKeyFromObject(referencingAgent) {
+		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests[0].NamespacedName)
+	}
+}
+
 func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {

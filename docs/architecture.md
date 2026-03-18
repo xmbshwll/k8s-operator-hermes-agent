@@ -81,11 +81,16 @@ Each config file can come from exactly one source:
 If inline content is used, the controller generates a dedicated `ConfigMap` and mounts it into the pod.
 If a reference is used, the controller mounts the referenced key directly.
 
+Referenced `ConfigMap` and `Secret` objects are watched by the controller.
+Their current content is folded into the pod template hash so external updates trigger a deterministic reconcile and rollout.
+This is especially important for `configMapRef` file mounts because they use `subPath`, which does not live-refresh in a running container.
+
 The controller computes a config hash from:
 - resolved file inputs
-- `spec.env`
-- `spec.envFrom`
-- `spec.secretRefs`
+- referenced `ConfigMap` file content for `spec.config.configMapRef` and `spec.gatewayConfig.configMapRef`
+- `spec.env`, including current data for `configMapKeyRef` and `secretKeyRef`
+- `spec.envFrom` plus current data from referenced `ConfigMap` and `Secret` objects
+- `spec.secretRefs` plus current data from referenced `Secret` objects
 
 That hash is added to the pod template so config changes roll the `StatefulSet` predictably.
 

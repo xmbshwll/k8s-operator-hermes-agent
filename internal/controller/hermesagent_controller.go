@@ -30,6 +30,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
@@ -58,6 +59,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -72,7 +74,23 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	plan, err := buildConfigPlan(agent)
+	referencedInputs, err := r.resolveReferencedInputs(ctx, agent)
+	if err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			status.PersistenceBound = false
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", err.Error())
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is valid")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is valid")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", "HermesAgent referenced inputs could not be read")
+			status.Phase = phaseConfigError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("read referenced inputs: %w (status update failed: %v)", err, statusErr)
+		}
+		return ctrl.Result{}, err
+	}
+
+	plan, err := buildConfigPlanWithReferences(agent, referencedInputs)
 	if err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
@@ -187,8 +205,186 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&networkingv1.NetworkPolicy{}).
 		Owns(&appsv1.StatefulSet{}).
+		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForConfigMap)).
+		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForSecret)).
 		Named("hermesagent").
 		Complete(r)
+}
+
+func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, agent *hermesv1alpha1.HermesAgent) (referencedInputState, error) {
+	referencedInputs := referencedInputState{}
+
+	appendConfigFileSnapshot := func(source hermesv1alpha1.HermesAgentConfigSource) error {
+		if source.ConfigMapRef == nil || source.ConfigMapRef.Name == "" {
+			return nil
+		}
+
+		configMap := &corev1.ConfigMap{}
+		err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, nil))
+				return nil
+			}
+			return err
+		}
+
+		referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, configMap))
+		return nil
+	}
+
+	if err := appendConfigFileSnapshot(agent.Spec.Config); err != nil {
+		return referencedInputs, err
+	}
+	if err := appendConfigFileSnapshot(agent.Spec.GatewayConfig); err != nil {
+		return referencedInputs, err
+	}
+
+	for _, envVar := range agent.Spec.Env {
+		if envVar.ValueFrom == nil {
+			continue
+		}
+		if envVar.ValueFrom.ConfigMapKeyRef != nil && envVar.ValueFrom.ConfigMapKeyRef.Name != "" {
+			configMap := &corev1.ConfigMap{}
+			err := r.Get(ctx, client.ObjectKey{Name: envVar.ValueFrom.ConfigMapKeyRef.Name, Namespace: agent.Namespace}, configMap)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				configMap = nil
+			}
+			referencedInputs.EnvValueRefs = append(referencedInputs.EnvValueRefs, newConfigMapKeySnapshot(envVar.ValueFrom.ConfigMapKeyRef.Name, envVar.ValueFrom.ConfigMapKeyRef.Key, optionalValue(envVar.ValueFrom.ConfigMapKeyRef.Optional), configMap))
+		}
+		if envVar.ValueFrom.SecretKeyRef != nil && envVar.ValueFrom.SecretKeyRef.Name != "" {
+			secret := &corev1.Secret{}
+			err := r.Get(ctx, client.ObjectKey{Name: envVar.ValueFrom.SecretKeyRef.Name, Namespace: agent.Namespace}, secret)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				secret = nil
+			}
+			referencedInputs.EnvValueRefs = append(referencedInputs.EnvValueRefs, newSecretKeySnapshot(envVar.ValueFrom.SecretKeyRef.Name, envVar.ValueFrom.SecretKeyRef.Key, optionalValue(envVar.ValueFrom.SecretKeyRef.Optional), secret))
+		}
+	}
+
+	for _, source := range agent.Spec.EnvFrom {
+		if source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" {
+			configMap := &corev1.ConfigMap{}
+			err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				configMap = nil
+			}
+			referencedInputs.EnvFrom = append(referencedInputs.EnvFrom, newConfigMapEnvFromSnapshot(source.ConfigMapRef.Name, optionalValue(source.ConfigMapRef.Optional), configMap))
+		}
+		if source.SecretRef != nil && source.SecretRef.Name != "" {
+			secret := &corev1.Secret{}
+			err := r.Get(ctx, client.ObjectKey{Name: source.SecretRef.Name, Namespace: agent.Namespace}, secret)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				secret = nil
+			}
+			referencedInputs.EnvFrom = append(referencedInputs.EnvFrom, newSecretSnapshot(source.SecretRef.Name, optionalValue(source.SecretRef.Optional), secret))
+		}
+	}
+
+	for _, secretRef := range agent.Spec.SecretRefs {
+		if secretRef.Name == "" {
+			continue
+		}
+
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: agent.Namespace}, secret)
+		if err != nil {
+			if !apierrors.IsNotFound(err) {
+				return referencedInputs, err
+			}
+			secret = nil
+		}
+		referencedInputs.SecretRefs = append(referencedInputs.SecretRefs, newSecretSnapshot(secretRef.Name, false, secret))
+	}
+
+	return referencedInputs, nil
+}
+
+func (r *HermesAgentReconciler) findAgentsForConfigMap(ctx context.Context, obj client.Object) []ctrl.Request {
+	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1alpha1.HermesAgent) bool {
+		return referencesConfigMap(agent, obj.GetName())
+	})
+}
+
+func (r *HermesAgentReconciler) findAgentsForSecret(ctx context.Context, obj client.Object) []ctrl.Request {
+	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1alpha1.HermesAgent) bool {
+		return referencesSecret(agent, obj.GetName())
+	})
+}
+
+func (r *HermesAgentReconciler) findReferencingAgents(ctx context.Context, namespace string, matches func(*hermesv1alpha1.HermesAgent) bool) []ctrl.Request {
+	agentList := &hermesv1alpha1.HermesAgentList{}
+	if err := r.List(ctx, agentList, client.InNamespace(namespace)); err != nil {
+		return nil
+	}
+
+	requests := []ctrl.Request{}
+	for i := range agentList.Items {
+		agent := &agentList.Items[i]
+		if !matches(agent) {
+			continue
+		}
+		requests = append(requests, ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)})
+	}
+	return requests
+}
+
+func referencesConfigMap(agent *hermesv1alpha1.HermesAgent, name string) bool {
+	if name == "" {
+		return false
+	}
+	if configSourceReferencesConfigMap(agent.Spec.Config, name) || configSourceReferencesConfigMap(agent.Spec.GatewayConfig, name) {
+		return true
+	}
+	for _, envVar := range agent.Spec.Env {
+		if envVar.ValueFrom != nil && envVar.ValueFrom.ConfigMapKeyRef != nil && envVar.ValueFrom.ConfigMapKeyRef.Name == name {
+			return true
+		}
+	}
+	for _, source := range agent.Spec.EnvFrom {
+		if source.ConfigMapRef != nil && source.ConfigMapRef.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func referencesSecret(agent *hermesv1alpha1.HermesAgent, name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, envVar := range agent.Spec.Env {
+		if envVar.ValueFrom != nil && envVar.ValueFrom.SecretKeyRef != nil && envVar.ValueFrom.SecretKeyRef.Name == name {
+			return true
+		}
+	}
+	for _, source := range agent.Spec.EnvFrom {
+		if source.SecretRef != nil && source.SecretRef.Name == name {
+			return true
+		}
+	}
+	for _, secretRef := range agent.Spec.SecretRefs {
+		if secretRef.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func configSourceReferencesConfigMap(source hermesv1alpha1.HermesAgentConfigSource, name string) bool {
+	return source.ConfigMapRef != nil && source.ConfigMapRef.Name == name
 }
 
 func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, agent *hermesv1alpha1.HermesAgent, file resolvedConfigFile) error {
