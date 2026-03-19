@@ -176,6 +176,7 @@ spec:
 
 		podName := statefulSetPodName(name)
 		waitForPodCreated(podName)
+		waitForContainerRunning(podName, "hermes")
 
 		By("verifying Hermes reports a running gateway before any platform connects")
 		Eventually(func(g Gomega) {
@@ -775,6 +776,18 @@ func waitForPodCreated(podName string) {
 		name, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.name}")
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(strings.TrimSpace(name)).To(Equal(podName))
+	}, 5*time.Minute, time.Second).Should(Succeed())
+}
+
+func waitForContainerRunning(podName, containerName string) {
+	Eventually(func(g Gomega) {
+		startedAt, err := kubectl(
+			"get", "pod", podName,
+			"-n", hermesAgentNamespace,
+			"-o", fmt.Sprintf("jsonpath={.status.containerStatuses[?(@.name=='%s')].state.running.startedAt}", containerName),
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(startedAt)).NotTo(BeEmpty())
 	}, 5*time.Minute, time.Second).Should(Succeed())
 }
 
