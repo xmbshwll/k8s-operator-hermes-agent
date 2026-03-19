@@ -1,3 +1,5 @@
+{{- $metricsTLSManaged := include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+{{- $webhookTLSManaged := include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -38,10 +40,10 @@ spec:
         {{- if .Values.leaderElection.enabled }}
         - --leader-elect
         {{- end }}
-        {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+        {{- if $metricsTLSManaged }}
         - --metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs
         {{- end }}
-        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+        {{- if $webhookTLSManaged }}
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         {{- end }}
         command:
@@ -50,7 +52,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: ENABLE_WEBHOOKS
-          {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+          {{- if $webhookTLSManaged }}
           value: "true"
           {{- else }}
           value: "false"
@@ -63,7 +65,7 @@ spec:
           periodSeconds: 20
         name: manager
         ports:
-        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+        {{- if $webhookTLSManaged }}
         - containerPort: {{ .Values.webhook.port }}
           name: webhook-server
           protocol: TCP
@@ -83,12 +85,12 @@ spec:
         securityContext:
           {{- toYaml .Values.containerSecurityContext | nindent 10 }}
         volumeMounts:
-        {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+        {{- if $metricsTLSManaged }}
         - mountPath: /tmp/k8s-metrics-server/metrics-certs
           name: metrics-certs
           readOnly: true
         {{- end }}
-        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+        {{- if $webhookTLSManaged }}
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: webhook-certs
           readOnly: true
@@ -114,12 +116,12 @@ spec:
       {{- end }}
       terminationGracePeriodSeconds: 10
       volumes:
-      {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+      {{- if $metricsTLSManaged }}
       - name: metrics-certs
         secret:
           secretName: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
       {{- end }}
-      {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+      {{- if $webhookTLSManaged }}
       - name: webhook-certs
         secret:
           secretName: webhook-server-cert

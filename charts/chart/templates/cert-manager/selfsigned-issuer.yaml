@@ -1,4 +1,6 @@
-{{- if or (include "k8s-operator-hermes-agent.webhookTLSManaged" .) (include "k8s-operator-hermes-agent.metricsTLSManaged" .) }}
+{{- $webhookTLSManaged := include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+{{- $metricsTLSManaged := include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+{{- if or $webhookTLSManaged $metricsTLSManaged }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:

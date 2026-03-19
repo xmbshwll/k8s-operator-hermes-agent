@@ -1,4 +1,5 @@
-{{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+{{- $metricsTLSManaged := include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
+{{- if $metricsTLSManaged }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
