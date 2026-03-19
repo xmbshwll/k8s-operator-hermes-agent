@@ -1465,14 +1465,16 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 			}},
 		},
 	}
+	requestedStorageClassName := "slow-ssd"
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-drift"},
 		Spec: hermesv1alpha1.HermesAgentSpec{
 			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
 			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
 			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
-				Size:        testPersistentVolumeSize,
-				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+				Size:             testPersistentVolumeSize,
+				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+				StorageClassName: &requestedStorageClassName,
 			}},
 		},
 	}
@@ -1498,6 +1500,74 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 	}
 	requireStatusCondition(t, updatedAgent.Status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
 	requireStatusCondition(t, updatedAgent.Status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
+}
+
+func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	defaultedStorageClassName := "cluster-default"
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(testAgentName), Namespace: testNamespace},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: &defaultedStorageClassName,
+			Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{
+				corev1.ResourceStorage: resourceMustParse(t, testPersistentVolumeSize),
+			}},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-default-storageclass"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+				Size:        testPersistentVolumeSize,
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			}},
+		},
+	}
+	oneReplica := int32(1)
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: agent.Name, Namespace: agent.Namespace, Generation: 1},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &oneReplica},
+		Status: appsv1.StatefulSetStatus{
+			ObservedGeneration: 1,
+			ReadyReplicas:      1,
+		},
+	}
+
+	recorder := record.NewFakeRecorder(10)
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, pvc, statefulSet).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme, Recorder: recorder}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("expected reconcile to ignore defaulted storageClassName drift when unset in spec, got error: %v", err)
+	}
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	requireStatusCondition(t, updatedAgent.Status, conditionTypePersistenceReady, metav1.ConditionTrue, "PersistentVolumeClaimBound")
 }
 
 func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {

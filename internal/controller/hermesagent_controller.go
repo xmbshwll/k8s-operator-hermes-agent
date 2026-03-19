@@ -531,7 +531,7 @@ func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Conte
 		if !exists {
 			persistentVolumeClaim.Spec = desired.Spec
 		} else {
-			if drift := persistentVolumeClaimImmutableFieldDrift(persistentVolumeClaim.Spec, desired.Spec); len(drift) > 0 {
+			if drift := persistentVolumeClaimImmutableFieldDrift(agent, persistentVolumeClaim.Spec, desired.Spec); len(drift) > 0 {
 				return &persistentVolumeClaimSpecDriftError{name: persistentVolumeClaim.Name, fields: drift}
 			}
 			persistentVolumeClaim.Spec.Resources.Requests = desired.Spec.Resources.Requests
@@ -550,12 +550,12 @@ func (e *persistentVolumeClaimSpecDriftError) Error() string {
 	return fmt.Sprintf("PersistentVolumeClaim %s must be recreated to apply immutable storage changes: %s", e.name, strings.Join(e.fields, ", "))
 }
 
-func persistentVolumeClaimImmutableFieldDrift(existing, desired corev1.PersistentVolumeClaimSpec) []string {
+func persistentVolumeClaimImmutableFieldDrift(agent *hermesv1alpha1.HermesAgent, existing, desired corev1.PersistentVolumeClaimSpec) []string {
 	var drift []string
 	if !equalPersistentVolumeAccessModes(existing.AccessModes, desired.AccessModes) {
 		drift = append(drift, "spec.storage.persistence.accessModes")
 	}
-	if !equalOptionalString(existing.StorageClassName, desired.StorageClassName) {
+	if agent.Spec.Storage.Persistence.StorageClassName != nil && !equalOptionalString(existing.StorageClassName, desired.StorageClassName) {
 		drift = append(drift, "spec.storage.persistence.storageClassName")
 	}
 	return drift
