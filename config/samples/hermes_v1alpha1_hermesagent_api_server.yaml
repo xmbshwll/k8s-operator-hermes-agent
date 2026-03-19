@@ -1,3 +1,6 @@
+# This sample only makes sense with a custom Hermes runtime image that already
+# serves the HTTP API you want on port 8080 while still running `hermes gateway`.
+# It is not a stock-Hermes example.
 apiVersion: v1
 kind: Secret
 metadata:

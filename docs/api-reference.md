@@ -103,6 +103,7 @@ List of named `Secret` objects mounted as read-only directories:
 
 Use this for the simple legacy secret-bundle path.
 For new work, prefer `spec.fileMounts` when you want an explicit mount path or a `ConfigMap` source.
+The operator only mounts the files; it does not make Hermes interpret or load them.
 Referenced secret content is hashed into the pod template.
 Changes trigger a rollout.
 
@@ -128,7 +129,8 @@ Rules:
 - mount paths must be unique within `spec.fileMounts`
 - exactly one source is allowed per entry
 
-Use this for plugin bundles, SSH material, prompt packs, certificates, or other runtime assets that Hermes consumes as files.
+Use this for plugin bundles, SSH material, prompt packs, certificates, or other runtime assets that a custom Hermes runtime image consumes as files.
+The operator only delivers those files; the runtime image still defines whether any plugin, API, or integration behavior exists.
 Referenced `ConfigMap` and `Secret` content is hashed into the pod template.
 Changes trigger a rollout.
 
@@ -308,7 +310,7 @@ spec:
 The operator manages a Service with the same name as the `HermesAgent`.
 If another same-name Service already exists and is not owned by the `HermesAgent`, reconciliation fails.
 
-This is the supported exposure path for HTTP-oriented deployment stories such as an API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen service port.
+This is the supported Kubernetes exposure path for HTTP-oriented deployment stories such as a custom API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen service port and implement the HTTP contract you expect. A stock Hermes image should not be assumed to expose that interface by default.
 
 ## Optional NetworkPolicy
 

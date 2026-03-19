@@ -1,3 +1,5 @@
+# This sample only demonstrates file delivery. Your runtime image must decide
+# whether and how mounted plugin files are discovered or loaded.
 apiVersion: v1
 kind: Secret
 metadata:

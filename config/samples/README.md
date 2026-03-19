@@ -83,14 +83,15 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 ```
 
-## API server exposure
+## API server exposure with a custom runtime image
 
 File: `hermes_v1alpha1_hermesagent_api_server.yaml`
 
 - Exposes the Hermes pod through the built-in optional `Service`
 - Uses `ClusterIP` on port `8080`
-- Good when your Hermes runtime image serves an HTTP API while still running under `hermes gateway`
-- Keeps the operator focused on the Hermes workload only; it does not add an ingress, proxy, or extra sidecar
+- Only works when you provide a custom Hermes runtime image that already serves the HTTP API you want while still running under `hermes gateway`
+- Does not imply that a stock Hermes image exposes an operator-ready HTTP API on `:8080`
+- Keeps the operator focused on the Hermes workload only; it does not add an ingress, proxy, sidecar, or API shim
 
 Apply it with:
 
@@ -100,8 +101,9 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
 
 Before applying it:
 - replace the placeholder API key secret values
-- set `spec.image.repository` to your Hermes runtime image
-- make sure your runtime image actually listens on port `8080` inside the container
+- set `spec.image.repository` to your custom Hermes runtime image
+- make sure that image actually listens on port `8080` inside the container and exposes the API contract you expect
+- do not assume a stock Hermes image provides this path by default
 - remember that the operator still starts `hermes gateway`; if your runtime needs a different entrypoint or port, adjust the image rather than the CR
 
 Remove it with:
@@ -110,13 +112,14 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
 ```
 
-## Open WebUI backend
+## Open WebUI backend with a custom runtime image
 
 File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
 
 - Exposes Hermes through a `ClusterIP` `Service` intended to be consumed by a separate Open WebUI deployment
+- Only works when you provide a custom Hermes runtime image that already serves the OpenAI-compatible or Open WebUI-compatible HTTP interface you expect
+- Does not imply that a stock Hermes image is a drop-in Open WebUI backend
 - Keeps Open WebUI out of the operator scope; this sample only manages the Hermes backend side
-- Good when Open WebUI runs elsewhere in-cluster and needs a stable service name to reach Hermes
 
 Apply it with:
 
@@ -126,8 +129,9 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
 
 Before applying it:
 - replace the placeholder API key secret values
-- set `spec.image.repository` to your Hermes runtime image
-- make sure your Hermes runtime image serves the HTTP interface Open WebUI expects on port `8080`
+- set `spec.image.repository` to your custom Hermes runtime image
+- make sure that image serves the exact HTTP interface Open WebUI expects on port `8080`
+- do not assume a stock Hermes image will satisfy that contract without extra runtime work
 - point Open WebUI at the resulting service DNS name, for example `http://hermesagent-openwebui:8080` from the same namespace
 - remember that this operator does not deploy or configure Open WebUI itself
 
@@ -137,13 +141,14 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
 ```
 
-## Plugin bundle via secret mount
+## Plugin bundle file delivery for a custom runtime image
 
 File: `hermes_v1alpha1_hermesagent_plugins.yaml`
 
-- Uses `spec.fileMounts` as the preferred plugin delivery mechanism
+- Uses `spec.fileMounts` as the preferred file-delivery mechanism
 - Mounts the plugin bundle at `/var/run/hermes/plugins`
 - Secret updates trigger a reconcile and pod rollout
+- Only handles file delivery; it does not make Hermes discover or load plugins by itself
 - Keeps plugin delivery on the existing operator API instead of introducing plugin-specific CRD fields
 
 Apply it with:
@@ -154,7 +159,8 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
 
 Before applying it:
 - replace the placeholder plugin file contents with your real plugin bundle
-- make sure your Hermes runtime image knows how to discover or load plugins from `/var/run/hermes/plugins`
+- make sure your custom Hermes runtime image knows how to discover or load plugins from `/var/run/hermes/plugins`
+- do not assume stock Hermes loads arbitrary mounted plugin files automatically
 - keep plugin filenames stable if your runtime expects specific entrypoints
 
 Remove it with:

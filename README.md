@@ -155,7 +155,7 @@ For other real deployment paths, see:
 - [`config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml`](config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`](config/samples/hermes_v1alpha1_hermesagent_plugins.yaml)
 
-The API server and Open WebUI samples rely on the existing optional `Service` and assume your Hermes runtime image already serves the expected HTTP interface on port `8080` while running under `hermes gateway`.
+The API server and Open WebUI samples rely on the existing optional `Service`, but they are only valid when you provide a custom Hermes runtime image that already serves the expected HTTP interface on port `8080` while running under `hermes gateway`. They should not be read as evidence that a stock Hermes image exposes that API shape by default.
 
 Before applying the minimal sample, update the Hermes runtime image:
 
@@ -216,7 +216,7 @@ Environment and mounted files are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
 - `spec.secretRefs` keeps the simple legacy secret-bundle path under `/var/run/hermes/secrets/<name>`
-- `spec.fileMounts` mounts a whole `ConfigMap` or `Secret` at an explicit path, which is the preferred path for new file-based runtime inputs such as plugins, SSH material, prompts, or certificates
+- `spec.fileMounts` mounts a whole `ConfigMap` or `Secret` at an explicit path, which is the preferred path for new file-based runtime inputs such as plugins, SSH material, prompts, or certificates; the operator only delivers those files, and the runtime image still decides what to do with them
 
 Workload placement, registry auth, and workload identity are also configured per `HermesAgent`:
 - `spec.imagePullSecrets` applies to the managed Hermes pod when the runtime image lives in a private registry
