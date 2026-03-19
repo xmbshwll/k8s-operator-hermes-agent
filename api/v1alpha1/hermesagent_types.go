@@ -188,6 +188,30 @@ type HermesAgentSpec struct {
 	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
 
+	// imagePullSecrets are image pull secrets for the managed Hermes pod.
+	// +optional
+	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// serviceAccountName is the ServiceAccount used by the managed Hermes pod.
+	// +optional
+	ServiceAccountName string `json:"serviceAccountName,omitempty"`
+
+	// nodeSelector constrains the Hermes pod to nodes with matching labels.
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+
+	// tolerations are pod tolerations for the managed Hermes workload.
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// affinity defines pod affinity and anti-affinity for the managed Hermes workload.
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+
+	// topologySpreadConstraints define pod topology spread rules for the managed Hermes workload.
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+
 	// storage defines Hermes state persistence.
 	// +optional
 	Storage HermesAgentStorageSpec `json:"storage,omitempty"`

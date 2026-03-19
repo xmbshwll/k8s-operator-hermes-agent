@@ -138,7 +138,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.gatewayConfig.configMapRef.key"))
 		})
 
-		It("rejects invalid storage size, service port, and network policy ports", func() {
+		It("rejects invalid storage size, service port, network policy ports, and empty image pull secrets", func() {
 			namespace := newNamespace()
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-settings-%d", time.Now().UnixNano()))
 			obj.Spec.Storage.Persistence.Size = "0Gi"
@@ -146,6 +146,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.Service.Port = -1
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{0}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{70000}
+			obj.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{}}
 
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
@@ -153,6 +154,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.service.port"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalTCPPorts[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalUDPPorts[0]"))
+			Expect(err.Error()).To(ContainSubstring("spec.imagePullSecrets[0].name"))
 		})
 
 		It("rejects inline terminal backend mismatches", func() {

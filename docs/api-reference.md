@@ -25,6 +25,12 @@ Scope: namespaced
 | `spec.env` | array | no | empty | Explicit environment variables |
 | `spec.envFrom` | array | no | empty | Import env from `ConfigMap` or `Secret` |
 | `spec.secretRefs` | array | no | empty | Mount named secrets under `/var/run/hermes/secrets/<name>` |
+| `spec.imagePullSecrets` | array | no | empty | Image pull secrets for the Hermes workload pod |
+| `spec.serviceAccountName` | string | no | empty | ServiceAccount for the Hermes workload pod |
+| `spec.nodeSelector` | object | no | empty | Node selector for the Hermes workload pod |
+| `spec.tolerations` | array | no | empty | Tolerations for the Hermes workload pod |
+| `spec.affinity` | object | no | empty | Affinity and anti-affinity for the Hermes workload pod |
+| `spec.topologySpreadConstraints` | array | no | empty | Topology spread rules for the Hermes workload pod |
 | `spec.storage` | object | no | persistence enabled | Hermes state storage settings |
 | `spec.terminal` | object | no | `backend: local` | Fallback terminal backend for operator wiring |
 | `spec.resources` | object | no | empty | Standard Kubernetes resource requests and limits |
@@ -97,6 +103,88 @@ List of named `Secret` objects mounted as read-only directories:
 Use this for file bundles the runtime image consumes directly, such as SSH auth material or Hermes plugin bundles.
 Referenced secret content is hashed into the pod template.
 Changes trigger a rollout.
+
+## Workload pod placement and registry auth
+
+These fields apply to the managed Hermes pod, not to the operator deployment itself.
+Use them when the runtime image lives in a private registry, the Hermes workload must run on specific nodes, or Hermes itself needs a dedicated Kubernetes identity.
+
+### `spec.imagePullSecrets`
+
+```yaml
+spec:
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+```
+
+Standard Kubernetes `imagePullSecrets` for the Hermes workload pod.
+Each entry must set `name`.
+
+### `spec.serviceAccountName`
+
+```yaml
+spec:
+  serviceAccountName: hermes-runtime
+```
+
+Standard Kubernetes `serviceAccountName` for the Hermes workload pod.
+Use this when Hermes itself needs Kubernetes API access with its own identity.
+This does not change the operator controller's ServiceAccount or RBAC.
+
+### `spec.nodeSelector`
+
+```yaml
+spec:
+  nodeSelector:
+    kubernetes.io/os: linux
+```
+
+Standard Kubernetes node selector for the Hermes workload pod.
+
+### `spec.tolerations`
+
+```yaml
+spec:
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: hermes
+      effect: NoSchedule
+```
+
+Standard Kubernetes tolerations for the Hermes workload pod.
+
+### `spec.affinity`
+
+```yaml
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: node-pool
+                operator: In
+                values:
+                  - gpu
+```
+
+Standard Kubernetes affinity and anti-affinity for the Hermes workload pod.
+
+### `spec.topologySpreadConstraints`
+
+```yaml
+spec:
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: hermes
+```
+
+Standard Kubernetes topology spread constraints for the Hermes workload pod.
 
 ## Storage
 
@@ -251,7 +339,7 @@ See `docs/troubleshooting.md` for common reasons and remediation steps.
 The webhook currently rejects:
 - mixed `raw` and `configMapRef` on the same config field
 - incomplete config references
-- incomplete `env`, `envFrom`, or `secretRefs` references
+- incomplete `env`, `envFrom`, `secretRefs`, or `imagePullSecrets` references
 - invalid storage sizes
 - invalid enabled Service ports
 - invalid additional NetworkPolicy ports

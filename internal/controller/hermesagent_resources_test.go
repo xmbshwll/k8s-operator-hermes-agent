@@ -785,4 +785,56 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	requireHermesContainerSecurityContext(t, container)
 	requireEmptyDirVolume(t, statefulSet.Spec.Template.Spec.Volumes, hermesTmpVolumeName)
 	requireVolumeMount(t, container.VolumeMounts, hermesTmpVolumeName, hermesTmpPath)
+	if statefulSet.Spec.Template.Spec.ServiceAccountName != "" {
+		t.Fatalf("expected default serviceAccountName to be empty, got %q", statefulSet.Spec.Template.Spec.ServiceAccountName)
+	}
+}
+
+func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.T) {
+	testAgent := &hermesv1alpha1.HermesAgent{}
+	testAgent.Name = testAgentName
+	testAgent.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-auth"}}
+	testAgent.Spec.ServiceAccountName = "hermes-runtime"
+	testAgent.Spec.NodeSelector = map[string]string{"kubernetes.io/os": "linux"}
+	testAgent.Spec.Tolerations = []corev1.Toleration{{Key: "dedicated", Operator: corev1.TolerationOpEqual, Value: "hermes", Effect: corev1.TaintEffectNoSchedule}}
+	testAgent.Spec.Affinity = &corev1.Affinity{
+		NodeAffinity: &corev1.NodeAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+				NodeSelectorTerms: []corev1.NodeSelectorTerm{{
+					MatchExpressions: []corev1.NodeSelectorRequirement{{Key: "node-pool", Operator: corev1.NodeSelectorOpIn, Values: []string{"gpu"}}},
+				}},
+			},
+		},
+	}
+	testAgent.Spec.TopologySpreadConstraints = []corev1.TopologySpreadConstraint{{
+		MaxSkew:           1,
+		TopologyKey:       "topology.kubernetes.io/zone",
+		WhenUnsatisfiable: corev1.ScheduleAnyway,
+		LabelSelector:     &metav1.LabelSelector{MatchLabels: map[string]string{"app": "hermes"}},
+	}}
+
+	plan, err := buildConfigPlan(testAgent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	podSpec := buildStatefulSet(testAgent, buildPodTemplateInputs(testAgent, plan)).Spec.Template.Spec
+	if len(podSpec.ImagePullSecrets) != 1 || podSpec.ImagePullSecrets[0].Name != "registry-auth" {
+		t.Fatalf("expected image pull secrets to be preserved, got %+v", podSpec.ImagePullSecrets)
+	}
+	if podSpec.ServiceAccountName != "hermes-runtime" {
+		t.Fatalf("expected serviceAccountName to be preserved, got %q", podSpec.ServiceAccountName)
+	}
+	if podSpec.NodeSelector["kubernetes.io/os"] != "linux" {
+		t.Fatalf("expected nodeSelector to be preserved, got %+v", podSpec.NodeSelector)
+	}
+	if len(podSpec.Tolerations) != 1 || podSpec.Tolerations[0].Key != "dedicated" {
+		t.Fatalf("expected tolerations to be preserved, got %+v", podSpec.Tolerations)
+	}
+	if podSpec.Affinity == nil || podSpec.Affinity.NodeAffinity == nil {
+		t.Fatalf("expected affinity to be preserved, got %+v", podSpec.Affinity)
+	}
+	if len(podSpec.TopologySpreadConstraints) != 1 || podSpec.TopologySpreadConstraints[0].TopologyKey != "topology.kubernetes.io/zone" {
+		t.Fatalf("expected topology spread constraints to be preserved, got %+v", podSpec.TopologySpreadConstraints)
+	}
 }

@@ -317,7 +317,13 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 					Annotations: mergeStringMaps(nil, inputs.Annotations),
 				},
 				Spec: corev1.PodSpec{
-					SecurityContext: hermesPodSecurityContext(),
+					SecurityContext:           hermesPodSecurityContext(),
+					ImagePullSecrets:          append([]corev1.LocalObjectReference{}, agent.Spec.ImagePullSecrets...),
+					ServiceAccountName:        agent.Spec.ServiceAccountName,
+					NodeSelector:              maps.Clone(agent.Spec.NodeSelector),
+					Tolerations:               append([]corev1.Toleration{}, agent.Spec.Tolerations...),
+					Affinity:                  agent.Spec.Affinity.DeepCopy(),
+					TopologySpreadConstraints: append([]corev1.TopologySpreadConstraint{}, agent.Spec.TopologySpreadConstraints...),
 					Containers: []corev1.Container{{
 						Name:            hermesContainerName,
 						Image:           hermesImage(agent.Spec.Image),

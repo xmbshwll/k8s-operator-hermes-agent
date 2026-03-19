@@ -188,7 +188,8 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 	allErrs = append(allErrs, validateTerminal(specPath, obj)...)
 	allErrs = append(allErrs, validateEnv(specPath.Child("env"), obj.Spec.Env)...)
 	allErrs = append(allErrs, validateEnvFrom(specPath.Child("envFrom"), obj.Spec.EnvFrom)...)
-	allErrs = append(allErrs, validateSecretRefs(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
+	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
+	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("imagePullSecrets"), obj.Spec.ImagePullSecrets)...)
 	allErrs = append(allErrs, validateService(specPath.Child("service"), obj.Spec.Service)...)
 	allErrs = append(allErrs, validateNetworkPolicy(specPath.Child("networkPolicy"), obj.Spec.NetworkPolicy)...)
 	allErrs = append(allErrs, validateStorage(specPath.Child("storage", "persistence"), obj.Spec.Storage.Persistence)...)
@@ -312,7 +313,7 @@ func validateEnvFrom(path *field.Path, sources []corev1.EnvFromSource) field.Err
 	return allErrs
 }
 
-func validateSecretRefs(path *field.Path, refs []corev1.LocalObjectReference) field.ErrorList {
+func validateLocalObjectReferences(path *field.Path, refs []corev1.LocalObjectReference) field.ErrorList {
 	allErrs := field.ErrorList{}
 	for i, ref := range refs {
 		if ref.Name == "" {

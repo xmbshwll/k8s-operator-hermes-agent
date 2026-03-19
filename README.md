@@ -27,6 +27,7 @@ A `HermesAgent` resource lets you declare:
 - the Hermes runtime image to run
 - Hermes `config.yaml` and `gateway.json`
 - environment variables and secret references
+- workload-level image pull secrets, ServiceAccount identity, and pod placement controls
 - persistent storage settings
 - resource requests and limits
 - startup, readiness, and liveness probes
@@ -215,6 +216,11 @@ Environment and secrets are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
 - `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`, which is the supported file-bundle path for things like SSH material and plugin bundles
+
+Workload placement, registry auth, and workload identity are also configured per `HermesAgent`:
+- `spec.imagePullSecrets` applies to the managed Hermes pod when the runtime image lives in a private registry
+- `spec.serviceAccountName` lets the managed Hermes pod use its own Kubernetes identity without changing the operator controller's ServiceAccount
+- `spec.nodeSelector`, `spec.tolerations`, `spec.affinity`, and `spec.topologySpreadConstraints` steer the managed Hermes pod onto the right nodes without affecting the operator deployment
 
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`. The controller derives operator-side wiring such as generated SSH egress rules from the resolved config content and only falls back to `spec.terminal.backend` when the config omits a backend.
 
