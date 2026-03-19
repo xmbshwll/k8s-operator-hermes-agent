@@ -85,88 +85,61 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	if _, err := buildConfigPlan(agent); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("build config plan: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, nil
+		})
 	}
 
 	referencedInputs, err := r.resolveReferencedInputs(ctx, agent)
 	if err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "read referenced inputs", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markConfigFailure(status, "ReferencedInputsReadFailed", fmt.Sprintf("Could not read referenced ConfigMaps or Secrets: %v", err), "Referenced configuration inputs could not be read")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("read referenced inputs: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	if missingMessages := missingReferenceMessages(referencedInputs); len(missingMessages) > 0 {
 		message := joinMessages(missingMessages)
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "missing referenced inputs", errors.New(message), func(status *hermesv1alpha1.HermesAgentStatus) {
 			markConfigFailure(status, "MissingReferencedInput", message, "Referenced configuration inputs are missing")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("missing referenced inputs: %s (status update failed: %v)", message, statusErr)
-		}
-		return ctrl.Result{}, nil
+		})
 	}
 
 	plan, err := buildConfigPlanWithReferences(agent, referencedInputs)
 	if err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("build config plan: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, nil
+		})
 	}
 
 	if err := r.reconcileGeneratedConfigMaps(ctx, agent, plan); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile configmap", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markConfigFailure(status, "ConfigMapReconcileFailed", err.Error(), "Inline configuration resources could not be reconciled")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("reconcile configmap: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile pvc", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markPersistenceFailure(status, err)
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("reconcile pvc: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	inputs := buildPodTemplateInputs(agent, plan)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile statefulset", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markWorkloadFailure(status, "StatefulSetReconcileFailed", err.Error(), "Hermes workload could not be reconciled")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("reconcile statefulset: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	if err := r.reconcileService(ctx, agent); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile service", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markWorkloadFailure(status, "ServiceReconcileFailed", err.Error(), "Hermes Service could not be reconciled")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("reconcile service: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	if err := r.reconcileNetworkPolicy(ctx, agent, referencedInputs); err != nil {
-		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile networkpolicy", err, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markWorkloadFailure(status, "NetworkPolicyReconcileFailed", err.Error(), "Hermes NetworkPolicy could not be reconciled")
-		}); statusErr != nil {
-			return ctrl.Result{}, fmt.Errorf("reconcile networkpolicy: %w (status update failed: %v)", err, statusErr)
-		}
-		return ctrl.Result{}, err
+		})
 	}
 
 	log.Info("Reconciled HermesAgent config",
@@ -666,6 +639,27 @@ func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agen
 		return controllerutil.SetControllerReference(agent, networkPolicy, r.Scheme)
 	})
 	return err
+}
+
+func (r *HermesAgentReconciler) returnStatusFailure(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) (ctrl.Result, error) {
+	if err := r.patchFailureStatus(ctx, agent, operation, cause, mutate); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, nil
+}
+
+func (r *HermesAgentReconciler) returnErrorWithStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) (ctrl.Result, error) {
+	if err := r.patchFailureStatus(ctx, agent, operation, cause, mutate); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{}, cause
+}
+
+func (r *HermesAgentReconciler) patchFailureStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) error {
+	if err := r.patchStatus(ctx, agent, mutate); err != nil {
+		return fmt.Errorf("%s: %w (status update failed: %v)", operation, cause, err)
+	}
+	return nil
 }
 
 func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, mutate func(*hermesv1alpha1.HermesAgentStatus)) error {

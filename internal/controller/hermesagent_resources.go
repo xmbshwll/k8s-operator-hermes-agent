@@ -260,24 +260,18 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 	}
 
 	inputs.Env = upsertEnvVar(inputs.Env, corev1.EnvVar{Name: "HERMES_HOME", Value: hermesHomePath})
+	appendConfigFileInputs(&inputs, plan.Files)
+	appendSecretReferenceInputs(&inputs, agent.Spec.SecretRefs)
+	appendFileMountInputs(&inputs, agent.Spec.FileMounts)
+	return inputs
+}
 
-	for _, file := range plan.Files {
+func appendConfigFileInputs(inputs *podTemplateInputs, files []resolvedConfigFile) {
+	for _, file := range files {
 		volumeName := configVolumeName(file.ID)
-		volumeSource := corev1.VolumeSource{}
-		if file.SecretName != "" {
-			volumeSource.Secret = &corev1.SecretVolumeSource{
-				SecretName: file.SecretName,
-				Items:      []corev1.KeyToPath{{Key: file.SourceKey, Path: file.FileName}},
-			}
-		} else {
-			volumeSource.ConfigMap = &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{Name: file.ConfigMapName},
-				Items:                []corev1.KeyToPath{{Key: file.SourceKey, Path: file.FileName}},
-			}
-		}
 		inputs.Volumes = append(inputs.Volumes, corev1.Volume{
 			Name:         volumeName,
-			VolumeSource: volumeSource,
+			VolumeSource: configFileVolumeSource(file),
 		})
 		inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
 			Name:      volumeName,
@@ -286,8 +280,28 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 			ReadOnly:  true,
 		})
 	}
+}
 
-	for i, secretRef := range agent.Spec.SecretRefs {
+func configFileVolumeSource(file resolvedConfigFile) corev1.VolumeSource {
+	items := []corev1.KeyToPath{{Key: file.SourceKey, Path: file.FileName}}
+	if file.SecretName != "" {
+		return corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName: file.SecretName,
+				Items:      items,
+			},
+		}
+	}
+	return corev1.VolumeSource{
+		ConfigMap: &corev1.ConfigMapVolumeSource{
+			LocalObjectReference: corev1.LocalObjectReference{Name: file.ConfigMapName},
+			Items:                items,
+		},
+	}
+}
+
+func appendSecretReferenceInputs(inputs *podTemplateInputs, secretRefs []corev1.LocalObjectReference) {
+	for i, secretRef := range secretRefs {
 		if secretRef.Name == "" {
 			continue
 		}
@@ -304,13 +318,15 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 			ReadOnly:  true,
 		})
 	}
+}
 
-	for i, fileMount := range agent.Spec.FileMounts {
-		volumeName := fmt.Sprintf("file-mount-%d", i)
+func appendFileMountInputs(inputs *podTemplateInputs, fileMounts []hermesv1alpha1.HermesAgentFileMountSpec) {
+	for i, fileMount := range fileMounts {
 		volumeSource := buildFileMountVolumeSource(fileMount)
 		if volumeSource == nil {
 			continue
 		}
+		volumeName := fmt.Sprintf("file-mount-%d", i)
 		inputs.Volumes = append(inputs.Volumes, corev1.Volume{
 			Name:         volumeName,
 			VolumeSource: *volumeSource,
@@ -321,8 +337,6 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 			ReadOnly:  true,
 		})
 	}
-
-	return inputs
 }
 
 func buildFileMountVolumeSource(fileMount hermesv1alpha1.HermesAgentFileMountSpec) *corev1.VolumeSource {
