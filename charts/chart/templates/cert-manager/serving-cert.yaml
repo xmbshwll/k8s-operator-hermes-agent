@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-  name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "serving-cert" "context" $) }}
+  name: {{ include "k8s-operator-hermes-agent.webhookServingCertificateName" . }}
   namespace: {{ .Release.Namespace }}
 spec:
   dnsNames:
@@ -15,6 +15,6 @@ spec:
   - {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "webhook-service" "context" $) }}.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
     kind: Issuer
-    name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "selfsigned-issuer" "context" $) }}
+    name: {{ include "k8s-operator-hermes-agent.selfSignedIssuerName" . }}
   secretName: webhook-server-cert
 {{- end }}

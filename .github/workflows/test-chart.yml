@@ -105,6 +105,27 @@ jobs:
             fi
           done
 
+      - name: Validate cert-manager-backed metrics TLS render path
+        run: |
+          rendered_chart=/tmp/chart-render-metrics-certmanager.yaml
+
+          helm template k8s-operator-hermes-agent ./charts/chart \
+            --set metrics.serviceMonitor.enabled=true \
+            --set metrics.certManager.enabled=true \
+            --api-versions monitoring.coreos.com/v1/ServiceMonitor > "${rendered_chart}"
+
+          for expected_line in \
+            "kind: Certificate" \
+            "name: k8s-operator-hermes-agent-metrics-certs" \
+            "secretName: k8s-operator-hermes-agent-metrics-server-cert" \
+            "--metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs" \
+            "name: k8s-operator-hermes-agent-metrics-server-cert" \
+            "key: ca.crt" \
+            "key: tls.crt" \
+            "key: tls.key"; do
+            grep -F -- "${expected_line}" "${rendered_chart}"
+          done
+
       - name: Validate webhook-disabled render path
         run: |
           rendered_chart=/tmp/chart-render-webhook-disabled.yaml

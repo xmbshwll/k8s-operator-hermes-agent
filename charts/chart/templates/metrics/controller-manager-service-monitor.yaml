@@ -16,9 +16,25 @@ spec:
       scheme: https
       bearerTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
       tlsConfig:
+        {{- if and .Values.metrics.certManager.enabled .Values.certManager.enabled }}
+        insecureSkipVerify: false
+        serverName: {{ default (printf "%s.%s.svc" (include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-metrics-service" "context" $)) .Release.Namespace) .Values.metrics.serviceMonitor.tlsConfig.serverName | quote }}
+        ca:
+          secret:
+            name: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
+            key: ca.crt
+        cert:
+          secret:
+            name: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
+            key: tls.crt
+        keySecret:
+          name: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
+          key: tls.key
+        {{- else }}
         insecureSkipVerify: {{ .Values.metrics.serviceMonitor.tlsConfig.insecureSkipVerify }}
         {{- if .Values.metrics.serviceMonitor.tlsConfig.serverName }}
         serverName: {{ .Values.metrics.serviceMonitor.tlsConfig.serverName | quote }}
+        {{- end }}
         {{- end }}
       {{- if .Values.metrics.serviceMonitor.interval }}
       interval: {{ .Values.metrics.serviceMonitor.interval | quote }}

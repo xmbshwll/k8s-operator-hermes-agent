@@ -1,4 +1,4 @@
-{{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+{{- if and .Values.certManager.enabled (or .Values.webhook.enabled (and .Values.metrics.enabled .Values.metrics.certManager.enabled)) }}
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
@@ -7,7 +7,7 @@ metadata:
     app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
     app.kubernetes.io/instance: {{ .Release.Name }}
-  name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "selfsigned-issuer" "context" $) }}
+  name: {{ include "k8s-operator-hermes-agent.selfSignedIssuerName" . }}
   namespace: {{ .Release.Namespace }}
 spec:
   selfSigned: {}

@@ -175,6 +175,14 @@
           },
           "required": ["enabled", "namespace", "additionalLabels", "interval", "scrapeTimeout", "tlsConfig"]
         },
+        "certManager": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        },
         "networkPolicy": {
           "type": "object",
           "additionalProperties": false,
@@ -195,7 +203,7 @@
           "required": ["enabled", "namespaceSelector"]
         }
       },
-      "required": ["enabled", "service", "serviceMonitor", "networkPolicy"]
+      "required": ["enabled", "service", "serviceMonitor", "certManager", "networkPolicy"]
     },
     "webhook": {
       "type": "object",

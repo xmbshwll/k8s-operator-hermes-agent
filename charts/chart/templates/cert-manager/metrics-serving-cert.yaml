@@ -1,0 +1,20 @@
+{{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
+    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  name: {{ include "k8s-operator-hermes-agent.metricsServingCertificateName" . }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  dnsNames:
+  - {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-metrics-service" "context" $) }}.{{ .Release.Namespace }}.svc
+  - {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-metrics-service" "context" $) }}.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "k8s-operator-hermes-agent.selfSignedIssuerName" . }}
+  secretName: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
+{{- end }}

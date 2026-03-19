@@ -85,3 +85,31 @@ Label selector for controller-manager pods.
 {{- define "k8s-operator-hermes-agent.controllerManagerSelectorLabels" -}}
 {{ include "k8s-operator-hermes-agent.controllerManagerMatchLabels" . }}
 {{- end }}
+
+{{/*
+Shared cert-manager issuer name.
+*/}}
+{{- define "k8s-operator-hermes-agent.selfSignedIssuerName" -}}
+{{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "selfsigned-issuer" "context" .) }}
+{{- end }}
+
+{{/*
+Webhook serving certificate name.
+*/}}
+{{- define "k8s-operator-hermes-agent.webhookServingCertificateName" -}}
+{{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "serving-cert" "context" .) }}
+{{- end }}
+
+{{/*
+Metrics serving certificate name.
+*/}}
+{{- define "k8s-operator-hermes-agent.metricsServingCertificateName" -}}
+{{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "metrics-certs" "context" .) }}
+{{- end }}
+
+{{/*
+Metrics serving certificate secret name.
+*/}}
+{{- define "k8s-operator-hermes-agent.metricsServingCertificateSecretName" -}}
+{{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "metrics-server-cert" "context" .) }}
+{{- end }}

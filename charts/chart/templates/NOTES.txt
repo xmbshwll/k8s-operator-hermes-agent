@@ -9,6 +9,9 @@ Admission webhooks are enabled and use cert-manager-managed certificates.
 {{- if .Values.metrics.serviceMonitor.enabled }}
 If the cluster has the ServiceMonitor CRD, a ServiceMonitor may be rendered for HTTPS metrics scraping.
 {{- end }}
+{{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+cert-manager-backed metrics TLS is enabled and the manager will mount a chart-managed metrics serving certificate.
+{{- end }}
 
 Verify the installation:
 

@@ -91,6 +91,8 @@ metrics:
     tlsConfig:
       insecureSkipVerify: false
       serverName: ""
+  certManager:
+    enabled: false
   networkPolicy:
     enabled: false
     namespaceSelector:

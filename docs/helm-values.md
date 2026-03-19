@@ -176,6 +176,8 @@ metrics:
     tlsConfig:
       insecureSkipVerify: false
       serverName: ""
+  certManager:
+    enabled: false
   networkPolicy:
     enabled: false
     namespaceSelector:
@@ -187,6 +189,7 @@ metrics:
 Additional chart-native options now cover:
 - `metrics.service.annotations` and `metrics.service.labels` for service discovery metadata
 - `metrics.serviceMonitor.*` for Prometheus Operator integration
+- `metrics.certManager.enabled` for cert-manager-backed metrics serving certificates mounted into the manager pod
 - `metrics.networkPolicy.*` for optional ingress protection on the metrics endpoint
 
 `metrics.serviceMonitor.enabled=true` only renders a `ServiceMonitor` when the `monitoring.coreos.com/v1` API exists in the cluster at render time.
@@ -194,8 +197,22 @@ Additional chart-native options now cover:
 #### TLS expectations for metrics scraping
 
 The metrics endpoint is served over HTTPS.
+
+For simple setups, `metrics.serviceMonitor.tlsConfig.*` lets you point Prometheus at an already-trusted serving certificate.
 The secure default is `metrics.serviceMonitor.tlsConfig.insecureSkipVerify=false`, which means your Prometheus stack must trust the serving certificate presented by the controller.
-If your environment does not trust that certificate yet, either:
+
+For chart-managed cert-manager parity with the kustomize flow, enable both:
+- `certManager.enabled=true`
+- `metrics.certManager.enabled=true`
+
+That path makes the chart:
+- issue a metrics serving certificate with cert-manager
+- mount that certificate into the controller-manager container via `--metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs`
+- configure the generated `ServiceMonitor` to use the matching CA, cert, and key secret references when `metrics.serviceMonitor.enabled=true`
+
+If you use the cert-manager-backed metrics path and also set `metrics.serviceMonitor.namespace` to a namespace different from the chart release namespace, the generated TLS secret references will not automatically move with it. Keep the `ServiceMonitor` in the release namespace for the chart-managed TLS path, or manage the TLS references yourself.
+
+If your environment does not trust the serving certificate yet, either:
 - configure Prometheus trust correctly, optionally setting `metrics.serviceMonitor.tlsConfig.serverName` when you need explicit hostname verification, or
 - set `metrics.serviceMonitor.tlsConfig.insecureSkipVerify=true` only as a deliberate local-development shortcut
 
