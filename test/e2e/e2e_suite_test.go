@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -51,9 +52,21 @@ func TestE2E(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	clusterName := os.Getenv("KIND_CLUSTER")
+	if clusterName == "" {
+		clusterName = "kind"
+	}
+	expectedContext := fmt.Sprintf("kind-%s", clusterName)
+
+	By("verifying the suite is pinned to the dedicated Kind cluster context")
+	cmd := exec.Command("kubectl", "config", "current-context")
+	output, err := utils.Run(cmd)
+	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to read the current kubectl context")
+	ExpectWithOffset(1, strings.TrimSpace(output)).To(Equal(expectedContext), "E2E tests must run against the dedicated Kind cluster context")
+
 	By("building the manager image")
-	cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
-	_, err := utils.Run(cmd)
+	cmd = exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", managerImage))
+	_, err = utils.Run(cmd)
 	ExpectWithOffset(1, err).NotTo(HaveOccurred(), "Failed to build the manager image")
 
 	By("building the Hermes runtime image for end-to-end validation")
