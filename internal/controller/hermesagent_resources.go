@@ -838,9 +838,6 @@ func effectiveTerminalBackend(agent *hermesv1alpha1.HermesAgent, referencedInput
 	if backend, ok := configSourceTerminalBackend(agent.Spec.Config, referencedInputs); ok {
 		return backend
 	}
-	if agent.Spec.Terminal.Backend == "" {
-		return "local"
-	}
 	return agent.Spec.Terminal.Backend
 }
 
@@ -848,18 +845,39 @@ func configSourceTerminalBackend(source hermesv1alpha1.HermesAgentConfigSource, 
 	if source.Raw != "" {
 		return terminalBackendFromConfigContent(source.Raw)
 	}
-	if source.ConfigMapRef == nil || source.ConfigMapRef.Name == "" || source.ConfigMapRef.Key == "" {
+
+	kind := ""
+	name := ""
+	key := ""
+	switch {
+	case source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" && source.ConfigMapRef.Key != "":
+		kind = "ConfigMap"
+		name = source.ConfigMapRef.Name
+		key = source.ConfigMapRef.Key
+	case source.SecretRef != nil && source.SecretRef.Name != "" && source.SecretRef.Key != "":
+		kind = "Secret"
+		name = source.SecretRef.Name
+		key = source.SecretRef.Key
+	default:
 		return "", false
 	}
 
 	for _, snapshot := range referencedInputs.FileRefs {
-		if snapshot.Kind != "ConfigMap" || snapshot.Name != source.ConfigMapRef.Name || snapshot.Key != source.ConfigMapRef.Key {
+		if snapshot.Kind != kind || snapshot.Name != name || snapshot.Key != key {
 			continue
 		}
 		if !snapshot.Present || !snapshot.KeyFound {
 			return "", false
 		}
-		return terminalBackendFromConfigContent(snapshot.Data[source.ConfigMapRef.Key])
+		content := snapshot.Data[key]
+		if snapshot.Kind == "Secret" {
+			decoded, err := base64.StdEncoding.DecodeString(content)
+			if err != nil {
+				return "", false
+			}
+			content = string(decoded)
+		}
+		return terminalBackendFromConfigContent(content)
 	}
 	return "", false
 }

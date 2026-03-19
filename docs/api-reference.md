@@ -33,7 +33,7 @@ Scope: namespaced
 | `spec.affinity` | object | no | empty | Affinity and anti-affinity for the Hermes workload pod |
 | `spec.topologySpreadConstraints` | array | no | empty | Topology spread rules for the Hermes workload pod |
 | `spec.storage` | object | no | persistence enabled | Hermes state storage settings |
-| `spec.terminal` | object | no | `backend: local` | Fallback terminal backend for operator wiring |
+| `spec.terminal` | object | no | empty | Optional fallback terminal hint for operator wiring |
 | `spec.resources` | object | no | empty | Standard Kubernetes resource requests and limits |
 | `spec.probes` | object | no | profile-specific defaults | Startup, readiness, and liveness behavior |
 | `spec.service` | object | no | disabled | Optional Service creation |
@@ -247,21 +247,20 @@ spec:
     backend: local
 ```
 
-Supported values:
-- `local`
-- `ssh`
-
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`.
 The operator derives Kubernetes-side behavior such as generated SSH egress rules from the resolved config content for inline, `configMapRef`, and `secretRef` inputs.
-`spec.terminal.backend` is only a fallback for cases where `config.yaml` does not declare a backend.
+`spec.terminal.backend` is only an optional fallback hint for cases where `config.yaml` does not declare a backend.
 
-When `backend: ssh` is used:
-- set `terminal.backend: ssh` in Hermes `config.yaml`
+The operator only has SSH-specific behavior today.
+That means:
+- when the effective backend is `ssh`, the generated NetworkPolicy adds SSH egress
+- any other backend value is treated generically by the operator
+- the operator does not try to model the full Hermes terminal backend surface in the CRD
+
+When SSH behavior matters:
+- prefer setting `terminal.backend: ssh` in Hermes `config.yaml`
 - provide the SSH env and mounted secret material your runtime image expects
-- optionally keep `spec.terminal.backend: ssh` as an explicit fallback/default, although the resolved config still wins
-
-When inline `spec.config.raw` is used, the webhook rejects explicit terminal backend mismatches.
-When `config.yaml` comes from `configMapRef`, the controller derives the effective backend during reconcile from the referenced ConfigMap content.
+- optionally set `spec.terminal.backend: ssh` only as a fallback hint when the config does not declare a backend
 
 ## Probes
 

@@ -92,14 +92,14 @@ type HermesAgentStorageSpec struct {
 	Persistence HermesAgentPersistenceSpec `json:"persistence,omitempty"`
 }
 
-// HermesAgentTerminalSpec defines terminal defaults for operator-side wiring.
+// HermesAgentTerminalSpec defines terminal hints for operator-side wiring.
 type HermesAgentTerminalSpec struct {
-	// backend is the fallback terminal backend the operator should assume when it
-	// cannot derive one from the resolved Hermes config.
+	// backend is an optional fallback hint the operator may use when it cannot
+	// derive terminal.backend from the resolved Hermes config.
 	// When config.yaml declares terminal.backend, that config value is the source of
 	// truth for operator-side behavior such as generated SSH egress rules.
-	// +kubebuilder:validation:Enum=local;ssh
-	// +kubebuilder:default:="local"
+	// The operator only has SSH-specific behavior today; all other backend values
+	// are treated generically.
 	Backend string `json:"backend,omitempty"`
 }
 

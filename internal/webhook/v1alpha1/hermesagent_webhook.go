@@ -28,7 +28,6 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
-	"sigs.k8s.io/yaml"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -36,7 +35,6 @@ import (
 const (
 	defaultMode                  = "gateway"
 	defaultImageTag              = "gateway-core"
-	defaultTerminalBackend       = "local"
 	defaultPersistenceSize       = "10Gi"
 	defaultServicePort     int32 = 8080
 	defaultProbePeriod     int32 = 10
@@ -80,9 +78,6 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 	}
 	if obj.Spec.Image.PullPolicy == "" {
 		obj.Spec.Image.PullPolicy = corev1.PullIfNotPresent
-	}
-	if obj.Spec.Terminal.Backend == "" {
-		obj.Spec.Terminal.Backend = defaultTerminalBackend
 	}
 
 	if obj.Spec.Storage.Persistence.Enabled == nil {
@@ -185,7 +180,6 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 
 	allErrs = append(allErrs, validateConfigSource(specPath.Child("config"), obj.Spec.Config)...)
 	allErrs = append(allErrs, validateConfigSource(specPath.Child("gatewayConfig"), obj.Spec.GatewayConfig)...)
-	allErrs = append(allErrs, validateTerminal(specPath, obj)...)
 	allErrs = append(allErrs, validateEnv(specPath.Child("env"), obj.Spec.Env)...)
 	allErrs = append(allErrs, validateEnvFrom(specPath.Child("envFrom"), obj.Spec.EnvFrom)...)
 	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
@@ -236,46 +230,6 @@ func validateConfigSource(path *field.Path, source hermesv1alpha1.HermesAgentCon
 		}
 	}
 	return allErrs
-}
-
-func validateTerminal(specPath *field.Path, obj *hermesv1alpha1.HermesAgent) field.ErrorList {
-	allErrs := field.ErrorList{}
-
-	if obj.Spec.Config.Raw == "" {
-		return allErrs
-	}
-
-	backend, found, err := terminalBackendFromConfigRaw(obj.Spec.Config.Raw)
-	if err != nil {
-		return allErrs
-	}
-	if !found {
-		if obj.Spec.Terminal.Backend == "ssh" {
-			allErrs = append(allErrs, field.Invalid(specPath.Child("config", "raw"), obj.Spec.Config.Raw, "spec.terminal.backend is ssh, so spec.config.raw must set terminal.backend to ssh as well"))
-		}
-		return allErrs
-	}
-	if backend != obj.Spec.Terminal.Backend {
-		allErrs = append(allErrs, field.Invalid(specPath.Child("config", "raw"), obj.Spec.Config.Raw, fmt.Sprintf("terminal.backend in spec.config.raw must match spec.terminal.backend (%s)", obj.Spec.Terminal.Backend)))
-	}
-
-	return allErrs
-}
-
-func terminalBackendFromConfigRaw(raw string) (string, bool, error) {
-	var config struct {
-		Terminal struct {
-			Backend string `yaml:"backend"`
-		} `yaml:"terminal"`
-	}
-
-	if err := yaml.Unmarshal([]byte(raw), &config); err != nil {
-		return "", false, err
-	}
-	if config.Terminal.Backend == "" {
-		return "", false, nil
-	}
-	return config.Terminal.Backend, true, nil
 }
 
 func validateEnv(path *field.Path, envVars []corev1.EnvVar) field.ErrorList {

@@ -708,6 +708,25 @@ func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
 	}
 }
 
+func TestEffectiveTerminalBackendUsesReferencedSecretConfigOverSpec(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
+		Key:                  "config.yaml",
+	}
+	referencedInputs := referencedInputState{
+		FileRefs: []referencedObjectSnapshot{
+			newSecretFileSnapshot("shared-config-secret", "config.yaml", &corev1.Secret{Data: map[string][]byte{"config.yaml": []byte("model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n")}}),
+		},
+	}
+
+	backend := effectiveTerminalBackend(agent, referencedInputs)
+	if backend != "ssh" {
+		t.Fatalf("expected referenced secret config terminal backend ssh, got %q", backend)
+	}
+}
+
 func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Spec.Terminal.Backend = "ssh"
@@ -716,6 +735,15 @@ func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testin
 	backend := effectiveTerminalBackend(agent, referencedInputState{})
 	if backend != "ssh" {
 		t.Fatalf("expected fallback terminal backend ssh, got %q", backend)
+	}
+}
+
+func TestEffectiveTerminalBackendIsEmptyWhenNoConfigOrFallbackDeclaresBackend(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+
+	backend := effectiveTerminalBackend(agent, referencedInputState{})
+	if backend != "" {
+		t.Fatalf("expected empty effective terminal backend, got %q", backend)
 	}
 }
 

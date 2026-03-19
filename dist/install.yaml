@@ -1621,15 +1621,13 @@ spec:
                   does not declare a backend.
                 properties:
                   backend:
-                    default: local
                     description: |-
-                      backend is the fallback terminal backend the operator should assume when it
-                      cannot derive one from the resolved Hermes config.
+                      backend is an optional fallback hint the operator may use when it cannot
+                      derive terminal.backend from the resolved Hermes config.
                       When config.yaml declares terminal.backend, that config value is the source of
                       truth for operator-side behavior such as generated SSH egress rules.
-                    enum:
-                    - local
-                    - ssh
+                      The operator only has SSH-specific behavior today; all other backend values
+                      are treated generically.
                     type: string
                 type: object
               tolerations:
