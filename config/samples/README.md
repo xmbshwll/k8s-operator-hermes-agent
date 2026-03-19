@@ -82,6 +82,60 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 ```
 
+## API server exposure
+
+File: `hermes_v1alpha1_hermesagent_api_server.yaml`
+
+- Exposes the Hermes pod through the built-in optional `Service`
+- Uses `ClusterIP` on port `8080`
+- Good when your Hermes runtime image serves an HTTP API while still running under `hermes gateway`
+- Keeps the operator focused on the Hermes workload only; it does not add an ingress, proxy, or extra sidecar
+
+Apply it with:
+
+```sh
+kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
+```
+
+Before applying it:
+- replace the placeholder API key secret values
+- set `spec.image.repository` to your Hermes runtime image
+- make sure your runtime image actually listens on port `8080` inside the container
+- remember that the operator still starts `hermes gateway`; if your runtime needs a different entrypoint or port, adjust the image rather than the CR
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
+```
+
+## Open WebUI backend
+
+File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
+
+- Exposes Hermes through a `ClusterIP` `Service` intended to be consumed by a separate Open WebUI deployment
+- Keeps Open WebUI out of the operator scope; this sample only manages the Hermes backend side
+- Good when Open WebUI runs elsewhere in-cluster and needs a stable service name to reach Hermes
+
+Apply it with:
+
+```sh
+kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
+```
+
+Before applying it:
+- replace the placeholder API key secret values
+- set `spec.image.repository` to your Hermes runtime image
+- make sure your Hermes runtime image serves the HTTP interface Open WebUI expects on port `8080`
+- point Open WebUI at the resulting service DNS name, for example `http://hermesagent-openwebui:8080` from the same namespace
+- remember that this operator does not deploy or configure Open WebUI itself
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
+```
+
 ## Plugin bundle via secret mount
 
 File: `hermes_v1alpha1_hermesagent_plugins.yaml`

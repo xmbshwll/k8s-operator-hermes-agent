@@ -149,6 +149,11 @@ For other real deployment paths, see:
 - [`config/samples/README.md`](config/samples/README.md)
 - [`config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`](config/samples/hermes_v1alpha1_hermesagent_telegram.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`](config/samples/hermes_v1alpha1_hermesagent_ssh.yaml)
+- [`config/samples/hermes_v1alpha1_hermesagent_api_server.yaml`](config/samples/hermes_v1alpha1_hermesagent_api_server.yaml)
+- [`config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml`](config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml)
+- [`config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`](config/samples/hermes_v1alpha1_hermesagent_plugins.yaml)
+
+The API server and Open WebUI samples rely on the existing optional `Service` and assume your Hermes runtime image already serves the expected HTTP interface on port `8080` while running under `hermes gateway`.
 
 Before applying the minimal sample, update the Hermes runtime image:
 

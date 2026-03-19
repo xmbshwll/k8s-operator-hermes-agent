@@ -1,0 +1,68 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hermesagent-api-server-env
+  labels:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    app.kubernetes.io/managed-by: kubectl
+stringData:
+  OPENROUTER_API_KEY: sk-or-replace-me
+type: Opaque
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: hermesagent-api-server
+  labels:
+    app.kubernetes.io/name: k8s-operator-hermes-agent
+    app.kubernetes.io/managed-by: kubectl
+spec:
+  image:
+    repository: ghcr.io/example/hermes-agent
+    tag: gateway-core
+    pullPolicy: IfNotPresent
+  mode: gateway
+  config:
+    raw: |
+      model: openrouter/anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  envFrom:
+    - secretRef:
+        name: hermesagent-api-server-env
+  storage:
+    persistence:
+      enabled: true
+      size: 10Gi
+      accessModes:
+        - ReadWriteOnce
+  terminal:
+    backend: local
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  probes:
+    startup:
+      enabled: true
+      periodSeconds: 10
+    readiness:
+      enabled: true
+      periodSeconds: 10
+    liveness:
+      enabled: true
+      periodSeconds: 10
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 8080
+  networkPolicy:
+    enabled: false

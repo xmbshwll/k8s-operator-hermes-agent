@@ -182,6 +182,8 @@ spec:
 The operator manages a Service with the same name as the `HermesAgent`.
 If another same-name Service already exists and is not owned by the `HermesAgent`, reconciliation fails.
 
+This is the supported exposure path for HTTP-oriented deployment stories such as an API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen service port.
+
 ## Optional NetworkPolicy
 
 ```yaml
