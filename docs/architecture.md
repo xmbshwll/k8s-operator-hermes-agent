@@ -53,6 +53,9 @@ The managed Hermes container is expected to:
 - tolerate a writable `/tmp`
 - support exec probes that run via `bash -ec`
 
+The repo includes a lightweight published-runtime contract check at `make test-runtime-contract`.
+That smoke test is meant to fail fast when the published `ghcr.io/xmbshwll/hermes-agent-docker` image drifts away from the operator's minimum runtime assumptions, without trying to replace the fuller fake-runtime e2e coverage.
+
 The operator provides these paths:
 - `/data/hermes` — persistent or ephemeral state volume and `HERMES_HOME`
 - `/data/hermes/config.yaml` — mounted Hermes config when provided

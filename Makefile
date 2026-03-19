@@ -61,6 +61,10 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
+.PHONY: test-runtime-contract
+test-runtime-contract: ## Run a lightweight contract check against the published Hermes runtime image.
+	bash ./test/runtime-contract/published_runtime_contract.sh
+
 # The default e2e setup uses Kind, builds/loads the manager image locally, and
 # installs CertManager unless CERT_MANAGER_INSTALL_SKIP=true is set.
 # If you switch to another e2e environment, update the setup under test/e2e.

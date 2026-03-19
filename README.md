@@ -77,6 +77,14 @@ The operator expects the Hermes runtime image to:
 - run under a non-root security context
 - support exec probes that use `bash -ec`
 
+The repository now includes a lightweight published-runtime smoke check:
+
+```sh
+make test-runtime-contract
+```
+
+That check validates the published `ghcr.io/xmbshwll/hermes-agent-docker` image against the minimum contract above by running it as the operator would: non-root, with `HERMES_HOME=/data/hermes`, mounted config files, and runtime-state file emission. It is intentionally a small contract check, not a full product e2e workflow.
+
 The controller mounts:
 - `/data/hermes` for Hermes state
 - `/tmp` as writable scratch space

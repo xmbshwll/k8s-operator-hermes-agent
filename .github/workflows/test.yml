@@ -21,3 +21,6 @@ jobs:
         run: |
           go mod tidy
           make test
+
+      - name: Validate published Hermes runtime contract
+        run: make test-runtime-contract
