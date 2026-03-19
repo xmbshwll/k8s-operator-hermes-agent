@@ -145,6 +145,22 @@ func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatu
 	t.Fatalf("expected condition %s", conditionType)
 }
 
+func requireConditionObservedGeneration(t *testing.T, status hermesv1alpha1.HermesAgentStatus, conditionType string, generation int64) {
+	t.Helper()
+
+	for _, condition := range status.Conditions {
+		if condition.Type != conditionType {
+			continue
+		}
+		if condition.ObservedGeneration != generation {
+			t.Fatalf("expected %s observedGeneration %d, got %d", conditionType, generation, condition.ObservedGeneration)
+		}
+		return
+	}
+
+	t.Fatalf("expected condition %s", conditionType)
+}
+
 func requireNetworkPolicyPort(t *testing.T, ports []networkingv1.NetworkPolicyPort, protocol corev1.Protocol, port int32) {
 	t.Helper()
 

@@ -24,16 +24,19 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	api "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -188,7 +191,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&hermesv1alpha1.HermesAgent{}).
+		For(&hermesv1alpha1.HermesAgent{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Service{}).
@@ -513,8 +516,12 @@ func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1
 	}
 
 	base := latest.DeepCopy()
-	mutate(&latest.Status)
 	latest.Status.ObservedGeneration = latest.Generation
+	mutate(&latest.Status)
+	if apiequality.Semantic.DeepEqual(base.Status, latest.Status) {
+		return nil
+	}
+
 	now := metav1.Now()
 	latest.Status.LastReconcileTime = &now
 
@@ -754,6 +761,7 @@ func setCondition(status *hermesv1alpha1.HermesAgentStatus, conditionType string
 	api.SetStatusCondition(&status.Conditions, metav1.Condition{
 		Type:               conditionType,
 		Status:             conditionStatus,
+		ObservedGeneration: status.ObservedGeneration,
 		Reason:             reason,
 		Message:            message,
 		LastTransitionTime: metav1.Now(),
