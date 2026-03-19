@@ -45,6 +45,10 @@ type HermesAgentConfigSource struct {
 	// configMapRef points to a ConfigMap key containing the file content.
 	// +optional
 	ConfigMapRef *corev1.ConfigMapKeySelector `json:"configMapRef,omitempty"`
+
+	// secretRef points to a Secret key containing the file content.
+	// +optional
+	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 }
 
 // HermesAgentFileMountSpec defines a projected ConfigMap or Secret mounted into the Hermes pod.

@@ -72,10 +72,13 @@ Each file source supports exactly one of:
 | `configMapRef.name` | string | Name of an existing ConfigMap in the same namespace |
 | `configMapRef.key` | string | Key inside that ConfigMap |
 | `configMapRef.optional` | bool | Optional for Kubernetes reference semantics, but missing required runtime inputs still prevent healthy workload progress |
+| `secretRef.name` | string | Name of an existing Secret in the same namespace |
+| `secretRef.key` | string | Key inside that Secret |
+| `secretRef.optional` | bool | Optional for Kubernetes reference semantics, but missing required runtime inputs still prevent healthy workload progress |
 
-Admission validation rejects setting both `raw` and `configMapRef` on the same config source.
+Admission validation rejects mixing `raw`, `configMapRef`, and `secretRef` on the same config source.
 
-Referenced `ConfigMap` content is hashed into the pod template.
+Referenced `ConfigMap` and `Secret` content is hashed into the pod template.
 Updating the referenced object triggers a reconcile and rollout.
 
 ## Environment and secrets
@@ -249,7 +252,7 @@ Supported values:
 - `ssh`
 
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`.
-The operator derives Kubernetes-side behavior such as generated SSH egress rules from the resolved config content for both inline and referenced `configMapRef` inputs.
+The operator derives Kubernetes-side behavior such as generated SSH egress rules from the resolved config content for inline, `configMapRef`, and `secretRef` inputs.
 `spec.terminal.backend` is only a fallback for cases where `config.yaml` does not declare a backend.
 
 When `backend: ssh` is used:
@@ -367,7 +370,7 @@ See `docs/troubleshooting.md` for common reasons and remediation steps.
 ## Admission behavior
 
 The webhook currently rejects:
-- mixed `raw` and `configMapRef` on the same config field
+- mixed `raw`, `configMapRef`, and `secretRef` sources on the same config field
 - incomplete config references
 - incomplete `env`, `envFrom`, `secretRefs`, `fileMounts`, or `imagePullSecrets` references
 - invalid file mount source combinations or duplicate file mount paths

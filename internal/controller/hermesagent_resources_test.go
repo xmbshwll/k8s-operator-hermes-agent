@@ -201,6 +201,53 @@ func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
 	}
 }
 
+func TestBuildConfigPlanWithSecretBackedConfig(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
+		Key:                  "config.yaml",
+	}
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+	if len(plan.Files) != 1 {
+		t.Fatalf("expected 1 resolved config file, got %d", len(plan.Files))
+	}
+	if plan.Files[0].SecretName != "shared-config-secret" {
+		t.Fatalf("expected secret-backed config source, got %+v", plan.Files[0])
+	}
+	if plan.Files[0].SourceKey != "config.yaml" {
+		t.Fatalf("expected source key config.yaml, got %q", plan.Files[0].SourceKey)
+	}
+}
+
+func TestBuildPodTemplateInputsUsesSecretVolumeForSecretBackedConfig(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
+		Key:                  "config.yaml",
+	}
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+	inputs := buildPodTemplateInputs(agent, plan)
+	if len(inputs.Volumes) != 1 {
+		t.Fatalf("expected 1 config volume, got %d", len(inputs.Volumes))
+	}
+	if inputs.Volumes[0].Secret == nil || inputs.Volumes[0].Secret.SecretName != "shared-config-secret" {
+		t.Fatalf("expected secret-backed config volume, got %+v", inputs.Volumes[0])
+	}
+	if len(inputs.Volumes[0].Secret.Items) != 1 || inputs.Volumes[0].Secret.Items[0].Key != "config.yaml" {
+		t.Fatalf("expected secret-backed config key mapping, got %+v", inputs.Volumes[0].Secret.Items)
+	}
+}
+
 func TestBuildConfigPlanRejectsMixedSource(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
@@ -312,6 +359,31 @@ func TestConfigHashChangesWhenReferencedConfigMapContentChanges(t *testing.T) {
 	}
 	if basePlan.Hash == updatedPlan.Hash {
 		t.Fatal("expected config hash to change when referenced ConfigMap content changes")
+	}
+}
+
+func TestConfigHashChangesWhenReferencedSecretBackedConfigChanges(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
+		Key:                  "config.yaml",
+	}
+
+	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileRefs: []referencedObjectSnapshot{newSecretFileSnapshot("shared-config-secret", "config.yaml", &corev1.Secret{Data: map[string][]byte{"config.yaml": []byte(testInlineConfig)}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileRefs: []referencedObjectSnapshot{newSecretFileSnapshot("shared-config-secret", "config.yaml", &corev1.Secret{Data: map[string][]byte{"config.yaml": []byte(testUpdatedConfig)}})},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(updated) returned error: %v", err)
+	}
+	if basePlan.Hash == updatedPlan.Hash {
+		t.Fatal("expected config hash to change when referenced Secret-backed config changes")
 	}
 }
 

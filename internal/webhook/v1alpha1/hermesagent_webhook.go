@@ -207,17 +207,33 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 
 func validateConfigSource(path *field.Path, source hermesv1alpha1.HermesAgentConfigSource) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if source.Raw != "" && source.ConfigMapRef != nil {
-		allErrs = append(allErrs, field.Invalid(path, source, "raw and configMapRef are mutually exclusive"))
+	hasRaw := source.Raw != ""
+	hasConfigMapRef := source.ConfigMapRef != nil
+	hasSecretRef := source.SecretRef != nil
+	sourceCount := 0
+	for _, present := range []bool{hasRaw, hasConfigMapRef, hasSecretRef} {
+		if present {
+			sourceCount++
+		}
 	}
-	if source.ConfigMapRef == nil {
-		return allErrs
+	if sourceCount > 1 {
+		allErrs = append(allErrs, field.Invalid(path, source, "raw, configMapRef, and secretRef are mutually exclusive"))
 	}
-	if source.ConfigMapRef.Name == "" {
-		allErrs = append(allErrs, field.Required(path.Child("configMapRef", "name"), "name is required when configMapRef is set"))
+	if source.ConfigMapRef != nil {
+		if source.ConfigMapRef.Name == "" {
+			allErrs = append(allErrs, field.Required(path.Child("configMapRef", "name"), "name is required when configMapRef is set"))
+		}
+		if source.ConfigMapRef.Key == "" {
+			allErrs = append(allErrs, field.Required(path.Child("configMapRef", "key"), "key is required when configMapRef is set"))
+		}
 	}
-	if source.ConfigMapRef.Key == "" {
-		allErrs = append(allErrs, field.Required(path.Child("configMapRef", "key"), "key is required when configMapRef is set"))
+	if source.SecretRef != nil {
+		if source.SecretRef.Name == "" {
+			allErrs = append(allErrs, field.Required(path.Child("secretRef", "name"), "name is required when secretRef is set"))
+		}
+		if source.SecretRef.Key == "" {
+			allErrs = append(allErrs, field.Required(path.Child("secretRef", "key"), "key is required when secretRef is set"))
+		}
 	}
 	return allErrs
 }

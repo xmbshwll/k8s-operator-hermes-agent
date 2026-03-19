@@ -110,7 +110,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 	})
 
 	Context("When validating HermesAgent", func() {
-		It("rejects mixed raw and configMapRef sources", func() {
+		It("rejects mixed raw and referenced config sources", func() {
 			namespace := newNamespace()
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-mixed-%d", time.Now().UnixNano()))
 			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
@@ -118,24 +118,32 @@ var _ = Describe("HermesAgent Webhook", func() {
 				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 				Key:                  "config.yaml",
 			}
+			obj.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"},
+				Key:                  "config.yaml",
+			}
 
 			err := k8sClient.Create(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			var statusErr *apierrors.StatusError
 			Expect(errors.As(err, &statusErr)).To(BeTrue())
-			Expect(statusErr.ErrStatus.Message).To(ContainSubstring("raw and configMapRef are mutually exclusive"))
+			Expect(statusErr.ErrStatus.Message).To(ContainSubstring("raw, configMapRef, and secretRef are mutually exclusive"))
 		})
 
-		It("rejects incomplete configMap references", func() {
+		It("rejects incomplete configMap and secret references", func() {
 			namespace := newNamespace()
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-ref-%d", time.Now().UnixNano()))
 			obj.Spec.GatewayConfig.ConfigMapRef = &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 			}
+			obj.Spec.Config.SecretRef = &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"},
+			}
 
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.gatewayConfig.configMapRef.key"))
+			Expect(err.Error()).To(ContainSubstring("spec.config.secretRef.key"))
 		})
 
 		It("rejects invalid storage size, service port, network policy ports, empty image pull secrets, and invalid file mounts", func() {

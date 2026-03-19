@@ -55,6 +55,31 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
 ```
 
+## Secret-backed config files
+
+File: `hermes_v1alpha1_hermesagent_secret_config.yaml`
+
+- Stores both `config.yaml` and `gateway.json` in a Kubernetes `Secret`
+- Good when the Hermes config itself is sensitive and should not live in a `ConfigMap`
+- Referenced Secret changes trigger a reconcile and pod rollout
+
+Apply it with:
+
+```sh
+kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+```
+
+Before applying it:
+- replace the placeholder config values with your real Hermes settings
+- set `spec.image.repository` to your Hermes runtime image
+- remember that the operator only mounts the Secret-backed files; the runtime image still defines Hermes behavior
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+```
+
 ## SSH terminal backend
 
 File: `hermes_v1alpha1_hermesagent_ssh.yaml`

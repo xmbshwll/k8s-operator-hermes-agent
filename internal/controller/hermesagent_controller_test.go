@@ -128,9 +128,9 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
 
-	configMap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
-		Data:       map[string]string{"config.yaml": testInlineConfig},
+	configSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-config-secret", Namespace: testNamespace},
+		Data:       map[string][]byte{"config.yaml": []byte(testInlineConfig)},
 	}
 	providerSecret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{Name: "provider-env", Namespace: testNamespace},
@@ -152,8 +152,8 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
+			Config: hermesv1alpha1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: configSecret.Name},
 				Key:                  "config.yaml",
 			}},
 			Env: []corev1.EnvVar{{
@@ -175,7 +175,7 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
 		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
-		WithObjects(agent, configMap, providerSecret, providerSecretKey, sshSecret).
+		WithObjects(agent, configSecret, providerSecret, providerSecretKey, sshSecret).
 		Build()
 
 	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
@@ -193,9 +193,9 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 		t.Fatal("expected initial StatefulSet pod template annotation to include config hash")
 	}
 
-	configMap.Data["config.yaml"] = testUpdatedConfig
-	if err := k8sClient.Update(context.Background(), configMap); err != nil {
-		t.Fatalf("update ConfigMap returned error: %v", err)
+	configSecret.Data["config.yaml"] = []byte(testUpdatedConfig)
+	if err := k8sClient.Update(context.Background(), configSecret); err != nil {
+		t.Fatalf("update config Secret returned error: %v", err)
 	}
 	providerSecret.Data["TOKEN"] = []byte("beta")
 	if err := k8sClient.Update(context.Background(), providerSecret); err != nil {
@@ -310,6 +310,10 @@ func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 	referencingAgent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "references-secret", Namespace: testNamespace},
 		Spec: hermesv1alpha1.HermesAgentSpec{
+			Config: hermesv1alpha1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"},
+				Key:                  "config.yaml",
+			}},
 			Env: []corev1.EnvVar{{
 				Name: "API_TOKEN",
 				ValueFrom: &corev1.EnvVarSource{
@@ -1124,7 +1128,7 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 		t.Fatalf("reconcile returned error: %v", err)
 	}
 
-	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "InvalidConfig", "cannot set both raw and configMapRef")
+	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "InvalidConfig", "must set exactly one of raw, configMapRef, or secretRef")
 }
 
 func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {

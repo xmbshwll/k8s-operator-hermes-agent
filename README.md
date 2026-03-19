@@ -150,6 +150,7 @@ Start with the minimal sample at [`config/samples/hermes_v1alpha1_hermesagent.ya
 For other real deployment paths, see:
 - [`config/samples/README.md`](config/samples/README.md)
 - [`config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`](config/samples/hermes_v1alpha1_hermesagent_telegram.yaml)
+- [`config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml`](config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`](config/samples/hermes_v1alpha1_hermesagent_ssh.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_api_server.yaml`](config/samples/hermes_v1alpha1_hermesagent_api_server.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml`](config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml)
@@ -202,7 +203,7 @@ A `HermesAgent` supports two config files:
 - `spec.config` → Hermes `config.yaml`
 - `spec.gatewayConfig` → Hermes `gateway.json`
 
-Each file can be supplied in one of two ways:
+Each file can be supplied in one of three ways:
 
 1. **Inline content** via `raw`
    - the controller creates a generated `ConfigMap`
@@ -211,6 +212,10 @@ Each file can be supplied in one of two ways:
 2. **Existing ConfigMap reference** via `configMapRef`
    - the controller mounts the referenced key directly
    - referenced `ConfigMap` changes trigger a reconcile and `StatefulSet` rollout so the subPath-mounted file is refreshed safely
+
+3. **Existing Secret reference** via `secretRef`
+   - the controller mounts the referenced key directly from a `Secret`
+   - referenced `Secret` changes trigger a reconcile and `StatefulSet` rollout the same way
 
 Environment and mounted files are handled separately:
 - `spec.env` adds explicit environment variables
@@ -226,7 +231,7 @@ Workload placement, registry auth, and workload identity are also configured per
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`. The controller derives operator-side wiring such as generated SSH egress rules from the resolved config content and only falls back to `spec.terminal.backend` when the config omits a backend.
 
 Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
-That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, `spec.secretRefs`, and `spec.fileMounts` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
+That means changes to `spec.config.configMapRef`, `spec.config.secretRef`, `spec.gatewayConfig.configMapRef`, `spec.gatewayConfig.secretRef`, `spec.env[].valueFrom`, `spec.envFrom`, `spec.secretRefs`, and `spec.fileMounts` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
 
 ## Admission and defaulting
 

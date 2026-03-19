@@ -51,7 +51,8 @@ type resolvedConfigFile struct {
 	ID            string
 	FileName      string
 	ConfigMapName string
-	ConfigMapKey  string
+	SecretName    string
+	SourceKey     string
 	MountPath     string
 	Generated     bool
 	Content       string
@@ -122,12 +123,19 @@ func buildConfigPlanWithReferences(agent *hermesv1alpha1.HermesAgent, referenced
 
 func resolveConfigFile(agent *hermesv1alpha1.HermesAgent, id, fileName string, source hermesv1alpha1.HermesAgentConfigSource) (*resolvedConfigFile, error) {
 	hasRaw := source.Raw != ""
-	hasRef := source.ConfigMapRef != nil
-
-	if hasRaw && hasRef {
-		return nil, fmt.Errorf("spec.%s cannot set both raw and configMapRef", sourceFieldName(id))
+	hasConfigMapRef := source.ConfigMapRef != nil
+	hasSecretRef := source.SecretRef != nil
+	sourceCount := 0
+	for _, present := range []bool{hasRaw, hasConfigMapRef, hasSecretRef} {
+		if present {
+			sourceCount++
+		}
 	}
-	if !hasRaw && !hasRef {
+
+	if sourceCount > 1 {
+		return nil, fmt.Errorf("spec.%s must set exactly one of raw, configMapRef, or secretRef", sourceFieldName(id))
+	}
+	if sourceCount == 0 {
 		return nil, nil
 	}
 
@@ -141,16 +149,24 @@ func resolveConfigFile(agent *hermesv1alpha1.HermesAgent, id, fileName string, s
 		file.Generated = true
 		file.Content = source.Raw
 		file.ConfigMapName = generatedConfigMapName(agent.Name, id)
-		file.ConfigMapKey = fileName
+		file.SourceKey = fileName
 		return file, nil
 	}
 
-	if source.ConfigMapRef.Name == "" || source.ConfigMapRef.Key == "" {
-		return nil, fmt.Errorf("spec.%s.configMapRef requires both name and key", sourceFieldName(id))
+	if hasConfigMapRef {
+		if source.ConfigMapRef.Name == "" || source.ConfigMapRef.Key == "" {
+			return nil, fmt.Errorf("spec.%s.configMapRef requires both name and key", sourceFieldName(id))
+		}
+		file.ConfigMapName = source.ConfigMapRef.Name
+		file.SourceKey = source.ConfigMapRef.Key
+		return file, nil
 	}
 
-	file.ConfigMapName = source.ConfigMapRef.Name
-	file.ConfigMapKey = source.ConfigMapRef.Key
+	if source.SecretRef.Name == "" || source.SecretRef.Key == "" {
+		return nil, fmt.Errorf("spec.%s.secretRef requires both name and key", sourceFieldName(id))
+	}
+	file.SecretName = source.SecretRef.Name
+	file.SourceKey = source.SecretRef.Key
 	return file, nil
 }
 
@@ -196,14 +212,21 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 
 	for _, file := range plan.Files {
 		volumeName := configVolumeName(file.ID)
+		volumeSource := corev1.VolumeSource{}
+		if file.SecretName != "" {
+			volumeSource.Secret = &corev1.SecretVolumeSource{
+				SecretName: file.SecretName,
+				Items:      []corev1.KeyToPath{{Key: file.SourceKey, Path: file.FileName}},
+			}
+		} else {
+			volumeSource.ConfigMap = &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{Name: file.ConfigMapName},
+				Items:                []corev1.KeyToPath{{Key: file.SourceKey, Path: file.FileName}},
+			}
+		}
 		inputs.Volumes = append(inputs.Volumes, corev1.Volume{
-			Name: volumeName,
-			VolumeSource: corev1.VolumeSource{
-				ConfigMap: &corev1.ConfigMapVolumeSource{
-					LocalObjectReference: corev1.LocalObjectReference{Name: file.ConfigMapName},
-					Items:                []corev1.KeyToPath{{Key: file.ConfigMapKey, Path: file.FileName}},
-				},
-			},
+			Name:         volumeName,
+			VolumeSource: volumeSource,
 		})
 		inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
 			Name:      volumeName,
@@ -509,6 +532,10 @@ func newSecretKeySnapshot(name, key string, optional bool, secret *corev1.Secret
 		snapshot.Data = map[string]string{key: base64.StdEncoding.EncodeToString(value)}
 	}
 	return snapshot
+}
+
+func newSecretFileSnapshot(name, key string, secret *corev1.Secret) referencedObjectSnapshot {
+	return newSecretKeySnapshot(name, key, false, secret)
 }
 
 func newSecretSnapshot(name string, optional bool, secret *corev1.Secret) referencedObjectSnapshot {

@@ -206,21 +206,35 @@ func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, age
 	referencedInputs := referencedInputState{}
 
 	appendConfigFileSnapshot := func(source hermesv1alpha1.HermesAgentConfigSource) error {
-		if source.ConfigMapRef == nil || source.ConfigMapRef.Name == "" {
+		if source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" {
+			configMap := &corev1.ConfigMap{}
+			err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, nil))
+					return nil
+				}
+				return err
+			}
+
+			referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, configMap))
+			return nil
+		}
+		if source.SecretRef == nil || source.SecretRef.Name == "" {
 			return nil
 		}
 
-		configMap := &corev1.ConfigMap{}
-		err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, client.ObjectKey{Name: source.SecretRef.Name, Namespace: agent.Namespace}, secret)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, nil))
+				referencedInputs.FileRefs = append(referencedInputs.FileRefs, newSecretFileSnapshot(source.SecretRef.Name, source.SecretRef.Key, nil))
 				return nil
 			}
 			return err
 		}
 
-		referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, configMap))
+		referencedInputs.FileRefs = append(referencedInputs.FileRefs, newSecretFileSnapshot(source.SecretRef.Name, source.SecretRef.Key, secret))
 		return nil
 	}
 
@@ -387,6 +401,9 @@ func referencesSecret(agent *hermesv1alpha1.HermesAgent, name string) bool {
 	if name == "" {
 		return false
 	}
+	if configSourceReferencesSecret(agent.Spec.Config, name) || configSourceReferencesSecret(agent.Spec.GatewayConfig, name) {
+		return true
+	}
 	for _, envVar := range agent.Spec.Env {
 		if envVar.ValueFrom != nil && envVar.ValueFrom.SecretKeyRef != nil && envVar.ValueFrom.SecretKeyRef.Name == name {
 			return true
@@ -414,6 +431,10 @@ func configSourceReferencesConfigMap(source hermesv1alpha1.HermesAgentConfigSour
 	return source.ConfigMapRef != nil && source.ConfigMapRef.Name == name
 }
 
+func configSourceReferencesSecret(source hermesv1alpha1.HermesAgentConfigSource, name string) bool {
+	return source.SecretRef != nil && source.SecretRef.Name == name
+}
+
 func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, agent *hermesv1alpha1.HermesAgent, file resolvedConfigFile) error {
 	configMap := &corev1.ConfigMap{}
 	configMap.Namespace = agent.Namespace
@@ -421,7 +442,7 @@ func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, ag
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, configMap, func() error {
 		configMap.Labels = mergeStringMaps(configMap.Labels, resourceLabels(agent))
-		configMap.Data = map[string]string{file.ConfigMapKey: file.Content}
+		configMap.Data = map[string]string{file.SourceKey: file.Content}
 		return controllerutil.SetControllerReference(agent, configMap, r.Scheme)
 	})
 	return err
