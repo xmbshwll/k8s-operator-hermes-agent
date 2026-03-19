@@ -1,27 +1,29 @@
-# Local demo guide: Kind + Argo CD + Hermes operator + first chat
+# Local Kind demo guide: plain kubectl path and plain Helm path
 
-This is the fastest clean local path to:
-- spin up a disposable Kubernetes cluster
-- get a useful web UI with Argo CD
-- install this operator from your local checkout
-- validate a Hermes runtime inside the cluster
-- optionally talk to it through Open WebUI
+This guide is intentionally narrow.
+It focuses on two local workflows only:
 
-This guide reflects the current operator behavior:
-- the operator chart enables admission webhooks by default, so cert-manager should be installed first
-- the local chart is the recommended install path while developing
-- the operator now supports richer `fileMounts` projections for selected keys and file modes
-- the general samples now use the published Hermes runtime image from `ghcr.io/xmbshwll/hermes-agent-docker:latest`
-- the API server and Open WebUI paths still require a **custom** Hermes runtime image that actually serves the HTTP API you want on port `8080`
+1. install and test the operator with plain `kubectl` / local manifests
+2. install and test the operator with plain Helm
 
-If your goal is only to validate the operator and a basic Hermes runtime, you can use the published GHCR image directly.
-If your goal is the full Open WebUI first-chat flow, you still need a custom HTTP-capable Hermes runtime image.
+It does **not** cover any extra UI tooling.
+The goal is just to prove that:
+- the operator installs cleanly on Kind
+- a `HermesAgent` becomes functional
+- you can inspect everything directly with `kubectl`
+
+This guide reflects the current project behavior:
+- cert-manager should be installed first because the default install path enables admission webhooks
+- local chart installs support an optional controller-manager `PodDisruptionBudget`, but it only renders for HA installs with `replicaCount > 1`
+- `HermesAgent` now supports richer `fileMounts` projections with selected keys and file modes
+- the general samples now use the published runtime image `ghcr.io/xmbshwll/hermes-agent-docker:latest`
+- HTTP UI and API-demo flows are out of scope here
 
 ---
 
 ## 1. Prerequisites
 
-You need these on your machine:
+You need these locally:
 - Docker
 - `kubectl`
 - `kind`
@@ -38,56 +40,19 @@ helm version
 
 ---
 
-## 2. Create a local Kubernetes cluster
+## 2. Create a local cluster
 
 ```sh
 kind create cluster --name hermes-local
+kubectl config use-context kind-hermes-local
 kubectl cluster-info --context kind-hermes-local
 ```
 
-Use that context for the rest of the guide:
-
-```sh
-kubectl config use-context kind-hermes-local
-```
-
 ---
 
-## 3. Install Argo CD for a nice UI
+## 3. Install cert-manager
 
-Argo CD is optional, but it gives you a clean dashboard for what is running in the cluster.
-
-```sh
-kubectl create namespace argocd
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
-kubectl wait -n argocd --for=condition=Available deployment/argocd-server --timeout=5m
-```
-
-Open the UI in another terminal:
-
-```sh
-kubectl -n argocd port-forward svc/argocd-server 8081:443
-```
-
-Then open:
-- https://localhost:8081
-
-Get the admin password:
-
-```sh
-kubectl -n argocd get secret argocd-initial-admin-secret \
-  -o jsonpath='{.data.password}' | base64 --decode && echo
-```
-
-Login with:
-- username: `admin`
-- password: output from the command above
-
----
-
-## 4. Install cert-manager
-
-The operator chart enables admission webhooks by default, so install cert-manager first.
+The operator install paths in this repo assume webhook TLS is available, so install cert-manager first.
 
 ```sh
 helm repo add jetstack https://charts.jetstack.io
@@ -108,7 +73,7 @@ kubectl get pods -n cert-manager
 
 ---
 
-## 5. Build and load the operator image
+## 4. Build and load the local operator image
 
 Build the operator image from this repo:
 
@@ -124,16 +89,39 @@ kind load docker-image k8s-operator-hermes-agent:local --name hermes-local
 
 ---
 
-## 6. Install the operator from your local chart
+## 5. Runtime image used for testing
+
+For the functional `HermesAgent` checks in this guide, use the published runtime image:
+
+```text
+ghcr.io/xmbshwll/hermes-agent-docker:latest
+```
+
+That image is already used by the general samples such as:
+- `config/samples/hermes_v1alpha1_hermesagent.yaml`
+- `config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml`
+- `config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`
+- `config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`
+- `config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`
+
+This guide stays on those non-HTTP functionality paths.
+
+Create a namespace for the demo objects:
 
 ```sh
-helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
-  --namespace k8s-operator-hermes-agent-system \
-  --create-namespace \
-  --set image.repository=k8s-operator-hermes-agent \
-  --set image.tag=local \
-  --wait \
-  --timeout 5m
+kubectl create namespace hermes-demo
+```
+
+---
+
+## 6. Path A: install and test with plain kubectl
+
+This path uses the repo’s local kustomize/manifests flow.
+
+### 6.1 Install the operator
+
+```sh
+make deploy IMG=k8s-operator-hermes-agent:local
 ```
 
 Verify:
@@ -143,68 +131,7 @@ kubectl get pods -n k8s-operator-hermes-agent-system
 kubectl get crd hermesagents.hermes.nous.ai
 ```
 
-You should see the controller-manager pod running.
-
-### Local upgrade note
-
-If you change the `HermesAgent` API or CRD schema while iterating locally, follow the same CRD-first flow the repo now documents for releases:
-
-```sh
-make build-crd-bundle
-kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
-helm upgrade k8s-operator-hermes-agent ./charts/chart \
-  --namespace k8s-operator-hermes-agent-system \
-  --wait \
-  --timeout 5m
-```
-
----
-
-## 7. Choose your Hermes runtime path
-
-There are now two practical local-demo paths.
-
-### Path A: use the published runtime image
-
-For minimal operator validation, secret-backed config, Telegram, SSH, or plugin file-delivery demos, you can use:
-
-```text
-ghcr.io/xmbshwll/hermes-agent-docker:latest
-```
-
-That image is a concrete starting point for the non-HTTP samples in `config/samples/`.
-It should not be treated as proof that an API-server or Open WebUI-compatible HTTP surface exists.
-
-### Path B: use a custom HTTP-capable runtime image
-
-For the Open WebUI path in this guide, you still need a custom Hermes runtime image that:
-- contains `hermes` in `PATH`
-- supports `hermes gateway`
-- tolerates `HERMES_HOME=/data/hermes`
-- supports `bash -ec` for probes
-- serves the HTTP API you want on port `8080`
-
-Example:
-
-```sh
-docker build -t hermes-agent-http:local /path/to/your/hermes-runtime
-kind load docker-image hermes-agent-http:local --name hermes-local
-```
-
----
-
-## 8. Create a demo namespace
-
-```sh
-kubectl create namespace hermes-demo
-```
-
----
-
-## 9. Quick operator/runtime validation with the published image
-
-If you want the quickest validation that the operator and runtime wiring work together, start with the minimal sample.
-It now points at the published GHCR image already.
+### 6.2 Apply the minimal HermesAgent sample
 
 ```sh
 kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent.yaml
@@ -223,123 +150,114 @@ kubectl rollout status -n hermes-demo \
   --timeout=10m
 ```
 
-Useful checks:
+### 6.3 Verify functionality with kubectl
 
 ```sh
 kubectl get hermesagent -n hermes-demo
-kubectl get pods,pvc -n hermes-demo
 kubectl describe hermesagent hermesagent-sample -n hermes-demo
+kubectl get statefulset,pod,pvc,configmap,secret -n hermes-demo
 kubectl logs statefulset/hermesagent-sample -n hermes-demo
 ```
 
-### Optional: validate newer file-delivery flows
+Things to confirm:
+- the `HermesAgent` reaches `Ready`
+- the managed `StatefulSet` exists and rolls out successfully
+- a PVC is created and bound
+- generated or referenced config files are mounted as expected
+- operator events are clean and do not show `InvalidConfig` or `MissingReferencedInput`
 
-The operator now supports richer file projections with selected keys and per-file modes.
-You can exercise that locally with the updated samples.
+### 6.4 Optional: test newer runtime-alignment samples
+
+#### Secret-backed config sample
+
+```sh
+kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+kubectl describe hermesagent hermesagent-secret-config -n hermes-demo
+```
+
+This validates:
+- `config.yaml` from `secretRef`
+- `gateway.json` from `secretRef`
+- deterministic rollout behavior for referenced Secret changes
 
 #### SSH sample
 
+Edit the placeholder secret values first, then:
+
 ```sh
 kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
+kubectl describe hermesagent hermesagent-ssh -n hermes-demo
+kubectl get networkpolicy -n hermes-demo
 ```
 
-What this demonstrates:
-- `terminal.backend: ssh` in Hermes config
-- fallback `spec.terminal.backend: ssh` only as an operator hint
-- `fileMounts` projecting only `id_ed25519` and `known_hosts`
-- SSH-safe file mode override for the private key
+This validates:
+- `terminal.backend: ssh` in resolved config
+- fallback `spec.terminal.backend` semantics
+- `fileMounts.items[]` projection
+- SSH-safe file mode overrides
 - generated SSH egress in the operator-managed `NetworkPolicy`
 
-#### Plugin sample
+#### Plugin file-delivery sample
 
 ```sh
 kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+kubectl describe hermesagent hermesagent-plugins -n hermes-demo
 ```
 
-What this demonstrates:
-- `fileMounts` with explicit `items`
-- selective projection of plugin files instead of mounting every key
-- rollout hashing tied to the selected keys only
+This validates:
+- explicit `fileMounts` key selection
+- projected file delivery without widening the CRD into generic pod-volume plumbing
 
-If you use either sample, edit the placeholder secrets first.
-See `config/samples/README.md` for the expected inputs.
+### 6.5 Clean up the kubectl-installed operator path
 
----
-
-## 10. Deploy a Hermes runtime for Open WebUI
-
-For the first-chat path, use a **custom HTTP-capable** Hermes runtime image.
-The built-in API-server and Open WebUI samples intentionally still assume a custom image.
-
-Apply a local-demo `HermesAgent`.
-Replace `YOUR_OPENROUTER_KEY` with a real key before running it.
-If you use another provider, adjust the env secret and `model:` accordingly.
+Delete sample workloads first:
 
 ```sh
-cat <<'EOF' | kubectl apply -n hermes-demo -f -
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hermesagent-openwebui-env
-stringData:
-  OPENROUTER_API_KEY: YOUR_OPENROUTER_KEY
-type: Opaque
+kubectl delete namespace hermes-demo
+```
+
+Then remove the operator:
+
+```sh
+make undeploy
+```
+
+If you also want to remove the CRD entirely:
+
+```sh
+make uninstall
+```
+
 ---
-apiVersion: hermes.nous.ai/v1alpha1
-kind: HermesAgent
-metadata:
-  name: hermesagent-openwebui
-spec:
-  image:
-    repository: hermes-agent-http
-    tag: local
-    pullPolicy: IfNotPresent
-  mode: gateway
-  config:
-    raw: |
-      model: openrouter/anthropic/claude-opus-4.1
-      terminal:
-        backend: local
-  gatewayConfig:
-    raw: |
-      {
-        "platforms": {}
-      }
-  envFrom:
-    - secretRef:
-        name: hermesagent-openwebui-env
-  storage:
-    persistence:
-      enabled: true
-      size: 10Gi
-      accessModes:
-        - ReadWriteOnce
-  terminal:
-    backend: local
-  resources:
-    requests:
-      cpu: 500m
-      memory: 1Gi
-    limits:
-      cpu: "2"
-      memory: 4Gi
-  probes:
-    startup:
-      enabled: true
-      periodSeconds: 10
-    readiness:
-      enabled: true
-      periodSeconds: 10
-    liveness:
-      enabled: true
-      periodSeconds: 10
-  service:
-    enabled: true
-    type: ClusterIP
-    port: 8080
-  networkPolicy:
-    enabled: false
-EOF
+
+## 7. Path B: install and test with Helm
+
+This path uses the local chart under `charts/chart/`.
+
+### 7.1 Install the operator with Helm
+
+```sh
+helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
+  --namespace k8s-operator-hermes-agent-system \
+  --create-namespace \
+  --set image.repository=k8s-operator-hermes-agent \
+  --set image.tag=local \
+  --wait \
+  --timeout 5m
+```
+
+Verify:
+
+```sh
+kubectl get pods -n k8s-operator-hermes-agent-system
+kubectl get crd hermesagents.hermes.nous.ai
+```
+
+### 7.2 Apply the same minimal HermesAgent sample
+
+```sh
+kubectl create namespace hermes-demo
+kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent.yaml
 ```
 
 Wait for it:
@@ -347,208 +265,199 @@ Wait for it:
 ```sh
 kubectl wait -n hermes-demo \
   --for=jsonpath='{.status.phase}'=Ready \
-  hermesagent/hermesagent-openwebui \
+  hermesagent/hermesagent-sample \
   --timeout=10m
 
 kubectl rollout status -n hermes-demo \
-  statefulset/hermesagent-openwebui \
+  statefulset/hermesagent-sample \
   --timeout=10m
 ```
 
-Useful checks:
+### 7.3 Verify functionality with kubectl
 
 ```sh
 kubectl get hermesagent -n hermes-demo
-kubectl get pods,svc,pvc -n hermes-demo
-kubectl describe hermesagent hermesagent-openwebui -n hermes-demo
-kubectl logs statefulset/hermesagent-openwebui -n hermes-demo
+kubectl describe hermesagent hermesagent-sample -n hermes-demo
+kubectl get statefulset,pod,pvc,configmap,secret -n hermes-demo
+kubectl logs statefulset/hermesagent-sample -n hermes-demo
+```
+
+This should give you the same functional result as the kubectl install path.
+The difference is only how the operator itself was installed.
+
+### 7.4 Optional: test Helm-specific chart behavior
+
+#### CRD-first local upgrade flow
+
+If you changed the API or CRD locally, use the same upgrade flow documented for releases:
+
+```sh
+make build-crd-bundle
+kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
+helm upgrade k8s-operator-hermes-agent ./charts/chart \
+  --namespace k8s-operator-hermes-agent-system \
+  --wait \
+  --timeout 5m
+```
+
+#### Optional HA / PodDisruptionBudget path
+
+The chart now supports an optional controller-manager PDB, but only for HA installs.
+It renders only when `replicaCount > 1`.
+
+Example:
+
+```sh
+helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
+  --namespace k8s-operator-hermes-agent-system \
+  --create-namespace \
+  --set image.repository=k8s-operator-hermes-agent \
+  --set image.tag=local \
+  --set replicaCount=2 \
+  --set podDisruptionBudget.enabled=true \
+  --wait \
+  --timeout 5m
+```
+
+Check it:
+
+```sh
+kubectl get pdb -n k8s-operator-hermes-agent-system
+kubectl describe pdb k8s-operator-hermes-agent-controller-manager-pdb -n k8s-operator-hermes-agent-system
+```
+
+### 7.5 Clean up the Helm-installed operator path
+
+Delete sample workloads first:
+
+```sh
+kubectl delete namespace hermes-demo
+```
+
+Then uninstall the chart:
+
+```sh
+helm uninstall k8s-operator-hermes-agent -n k8s-operator-hermes-agent-system
+```
+
+Helm uninstall keeps the CRD by default.
+If you also want to remove the API entirely after deleting all `HermesAgent` resources:
+
+```sh
+make uninstall
 ```
 
 ---
 
-## 11. Quick direct API smoke test
+## 8. Useful kubectl checks for both paths
 
-Before adding a chat UI, confirm the Hermes service is reachable.
-
-```sh
-kubectl -n hermes-demo port-forward svc/hermesagent-openwebui 8080:8080
-```
-
-In another terminal, try:
-
-```sh
-curl http://localhost:8080/
-```
-
-If your Hermes runtime exposes an OpenAI-compatible API, also try its model or health endpoint, for example:
-
-```sh
-curl http://localhost:8080/v1/models
-```
-
-If this does not work, fix the Hermes runtime image or service configuration before adding Open WebUI.
-
----
-
-## 12. Install Open WebUI for the first chat
-
-This example keeps Open WebUI simple and in-cluster.
-It points Open WebUI at the Hermes service DNS name.
-
-```sh
-kubectl create namespace openwebui
-
-cat <<'EOF' | kubectl apply -n openwebui -f -
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: open-webui
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: open-webui
-  template:
-    metadata:
-      labels:
-        app: open-webui
-    spec:
-      containers:
-        - name: open-webui
-          image: ghcr.io/open-webui/open-webui:main
-          ports:
-            - containerPort: 8080
-          env:
-            - name: OPENAI_API_BASE_URL
-              value: http://hermesagent-openwebui.hermes-demo.svc.cluster.local:8080/v1
-            - name: OPENAI_API_KEY
-              value: local-demo
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: open-webui
-spec:
-  selector:
-    app: open-webui
-  ports:
-    - port: 8080
-      targetPort: 8080
-EOF
-```
-
-Wait for it:
-
-```sh
-kubectl wait -n openwebui --for=condition=Available deployment/open-webui --timeout=10m
-```
-
-Port-forward it:
-
-```sh
-kubectl -n openwebui port-forward svc/open-webui 3000:8080
-```
-
-Open:
-- http://localhost:3000
-
-Then:
-1. finish the initial Open WebUI setup
-2. pick the Hermes-backed model if Open WebUI lists it
-3. send a first message
-
-If your Hermes API expects a real API key on incoming requests, replace `OPENAI_API_KEY=local-demo` with the value your runtime expects.
-
----
-
-## 13. Use Argo CD as the cluster dashboard
-
-Argo CD will not magically manage your unpublished local checkout, but it is still useful as a visual dashboard while you are testing.
-
-Good things to watch in Argo CD or with `kubectl`:
-- `k8s-operator-hermes-agent-system` namespace
-- `hermes-demo` namespace
-- the `HermesAgent` custom resource
-- the generated `StatefulSet`, `PVC`, `Service`, `NetworkPolicy`, and inline-generated `ConfigMap`
-
-For raw Kubernetes views, these are still the fastest commands:
+Operator health:
 
 ```sh
 kubectl get all -n k8s-operator-hermes-agent-system
-kubectl get all -n hermes-demo
-kubectl get hermesagent -A
-kubectl describe hermesagent hermesagent-openwebui -n hermes-demo
-```
-
----
-
-## 14. Troubleshooting shortcuts
-
-Hermes not getting ready:
-
-```sh
-kubectl describe hermesagent hermesagent-openwebui -n hermes-demo
-kubectl describe pod hermesagent-openwebui-0 -n hermes-demo
-kubectl logs hermesagent-openwebui-0 -n hermes-demo
-```
-
-Operator issues:
-
-```sh
 kubectl logs deployment/k8s-operator-hermes-agent-controller-manager \
   -n k8s-operator-hermes-agent-system \
   -c manager
 ```
 
-Open WebUI cannot talk to Hermes:
-- verify `svc/hermesagent-openwebui` exists in `hermes-demo`
-- verify Hermes really serves the API Open WebUI expects on `:8080`
-- re-run the direct `curl http://localhost:8080/v1/models` smoke test through port-forward
-- check the Open WebUI pod logs:
+HermesAgent health:
 
 ```sh
-kubectl logs deployment/open-webui -n openwebui
+kubectl get hermesagent -A
+kubectl describe hermesagent <name> -n hermes-demo
+kubectl describe pod <pod-name> -n hermes-demo
+kubectl logs <pod-name> -n hermes-demo
 ```
 
-Webhook or admission problems after local API changes:
-- regenerate and apply the CRD bundle first
-- then run `helm upgrade` again
-- confirm cert-manager and webhook-serving resources are healthy
+Related resources:
 
-Referenced file or secret inputs not taking effect:
-- inspect `kubectl describe hermesagent <name>` for `MissingReferencedInput` or `InvalidConfig`
-- verify `fileMounts.items[].key` entries actually exist in the referenced `Secret` or `ConfigMap`
-- verify projected item paths are relative and file modes are valid
+```sh
+kubectl get statefulset,pod,pvc,configmap,secret,networkpolicy -n hermes-demo
+```
 
 ---
 
-## 15. Cleanup
+## 9. Troubleshooting shortcuts
 
-Delete the demo apps:
+### The HermesAgent never becomes ready
 
 ```sh
-kubectl delete namespace openwebui hermes-demo
-helm uninstall k8s-operator-hermes-agent -n k8s-operator-hermes-agent-system
-helm uninstall cert-manager -n cert-manager
-kubectl delete namespace argocd cert-manager k8s-operator-hermes-agent-system
+kubectl describe hermesagent <name> -n hermes-demo
+kubectl describe pod <pod-name> -n hermes-demo
+kubectl logs <pod-name> -n hermes-demo
+```
+
+Look for:
+- probe failures
+- PVC binding problems
+- image pull failures
+- missing referenced ConfigMaps or Secrets
+
+### The operator rejects the resource on create
+
+Check the admission error and then review:
+- `spec.config`
+- `spec.gatewayConfig`
+- `spec.env`
+- `spec.envFrom`
+- `spec.secretRefs`
+- `spec.fileMounts`
+
+Common current validation rules:
+- config sources must not mix `raw`, `configMapRef`, and `secretRef`
+- file mounts must use exactly one source and an absolute `mountPath`
+- projected file items must use unique keys and unique relative output paths
+- projected file modes must be valid
+
+### A referenced file or secret change does not seem to take effect
+
+The controller now hashes referenced inputs into the pod template.
+Check:
+
+```sh
+kubectl describe hermesagent <name> -n hermes-demo
+kubectl get statefulset <name> -n hermes-demo -o yaml | rg config-hash
+```
+
+If you are using `fileMounts.items[]`, make sure the keys you changed are actually selected by the mount.
+Unselected keys do not participate in the rollout hash.
+
+### Helm upgrade after API changes behaves strangely
+
+Use the CRD-first flow:
+
+```sh
+make build-crd-bundle
+kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
+helm upgrade k8s-operator-hermes-agent ./charts/chart \
+  --namespace k8s-operator-hermes-agent-system
+```
+
+---
+
+## 10. Full cleanup
+
+```sh
+kubectl delete namespace hermes-demo --ignore-not-found=true
+helm uninstall cert-manager -n cert-manager || true
+kubectl delete namespace cert-manager k8s-operator-hermes-agent-system --ignore-not-found=true
 kind delete cluster --name hermes-local
 ```
 
 ---
 
-## Minimal happy-path checklist
+## Minimal checklist
 
-If you only want the shortest possible path, this is it:
+If you want the shortest possible proof that things work:
 
-1. `kind create cluster --name hermes-local`
+1. create the Kind cluster
 2. install cert-manager
-3. `make docker-build IMG=k8s-operator-hermes-agent:local`
-4. `kind load docker-image k8s-operator-hermes-agent:local --name hermes-local`
-5. `helm upgrade --install ... ./charts/chart ...`
-6. either:
-   - apply `config/samples/hermes_v1alpha1_hermesagent.yaml` to validate the published `ghcr.io/xmbshwll/hermes-agent-docker:latest` image, or
-   - build and load your custom HTTP-capable Hermes runtime image for Open WebUI
-7. wait for the `HermesAgent` to become ready
-8. if using the HTTP-capable path, smoke-test `curl http://localhost:8080/v1/models`
-9. deploy Open WebUI
-10. open http://localhost:3000 and chat
+3. build and load the operator image
+4. choose one install path:
+   - `make deploy IMG=k8s-operator-hermes-agent:local`
+   - or `helm upgrade --install ... ./charts/chart ...`
+5. create `hermes-demo`
+6. apply `config/samples/hermes_v1alpha1_hermesagent.yaml`
+7. wait for `hermesagent/hermesagent-sample` to become ready
+8. inspect it with `kubectl describe hermesagent hermesagent-sample -n hermes-demo`
+9. inspect logs and generated resources with `kubectl`
