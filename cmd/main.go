@@ -124,7 +124,12 @@ func parseManagerConfig() managerConfig {
 	flag.StringVar(&cfg.webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
 	flag.StringVar(&cfg.metricsCertPath, "metrics-cert-path", "",
 		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&cfg.metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
+	flag.StringVar(
+		&cfg.metricsCertName,
+		"metrics-cert-name",
+		"tls.crt",
+		"The name of the metrics server certificate file.",
+	)
 	flag.StringVar(&cfg.metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&cfg.enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
@@ -213,7 +218,12 @@ func newMetricsServerOptions(cfg managerConfig, tlsOpts []func(*tls.Config)) met
 	return options
 }
 
-func newManagerOptions(cfg managerConfig, metricsOptions metricsserver.Options, webhookServer webhook.Server, enableWebhooks bool) ctrl.Options {
+func newManagerOptions(
+	cfg managerConfig,
+	metricsOptions metricsserver.Options,
+	webhookServer webhook.Server,
+	enableWebhooks bool,
+) ctrl.Options {
 	options := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsOptions,
