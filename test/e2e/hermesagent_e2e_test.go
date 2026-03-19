@@ -249,7 +249,7 @@ spec:
 		}, 2*time.Minute, time.Second).Should(Succeed())
 	})
 
-	It("writes an observed-path report for mounted runtime inputs", func() {
+	It("mounts plugin bundles and rolls out updated plugin content", func() {
 		name := "hermesagent-observed-paths"
 		pluginSecretName := "hermesagent-plugin-bundle"
 		manifest, err := renderManifest(fmt.Sprintf(`
@@ -298,6 +298,7 @@ spec:
 		waitForAgentPhase(name, "Ready")
 
 		podName := statefulSetPodName(name)
+		beforeUID := podUID(podName)
 		Eventually(func(g Gomega) {
 			report, err := readObservedReport(podName)
 			g.Expect(err).NotTo(HaveOccurred())
@@ -306,6 +307,28 @@ spec:
 			g.Expect(report).To(ContainSubstring("path=/var/run/hermes/secrets/hermesagent-plugin-bundle"))
 			g.Expect(report).To(ContainSubstring("child=/var/run/hermes/secrets/hermesagent-plugin-bundle/plugin.py"))
 			g.Expect(report).To(ContainSubstring("plugin-ready"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("updating the mounted plugin bundle secret")
+		_, err = kubectl("patch", "secret", pluginSecretName, "-n", hermesAgentNamespace, "--type=merge", "-p", `{"stringData":{"plugin.py":"def register():\n    return \"plugin-updated\"\n"}}`)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the rollout triggered by the plugin bundle update")
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func(g Gomega) {
+			newUID, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(newUID)).NotTo(Equal(beforeUID))
+		}, 5*time.Minute, time.Second).Should(Succeed())
+		waitForPodReady(podName)
+
+		Eventually(func(g Gomega) {
+			report, err := readObservedReport(podName)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(report).To(ContainSubstring("child=/var/run/hermes/secrets/hermesagent-plugin-bundle/plugin.py"))
+			g.Expect(report).To(ContainSubstring("plugin-updated"))
+			g.Expect(report).NotTo(ContainSubstring("plugin-ready"))
 		}, 2*time.Minute, time.Second).Should(Succeed())
 	})
 

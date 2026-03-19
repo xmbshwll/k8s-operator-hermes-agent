@@ -94,6 +94,7 @@ List of named `Secret` objects mounted as read-only directories:
 /var/run/hermes/secrets/<secret-name>
 ```
 
+Use this for file bundles the runtime image consumes directly, such as SSH auth material or Hermes plugin bundles.
 Referenced secret content is hashed into the pod template.
 Changes trigger a rollout.
 

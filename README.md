@@ -208,7 +208,7 @@ Each file can be supplied in one of two ways:
 Environment and secrets are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
-- `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`
+- `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`, which is the supported file-bundle path for things like SSH material and plugin bundles
 
 Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
 That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.

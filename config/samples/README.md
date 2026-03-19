@@ -81,3 +81,29 @@ Remove it with:
 ```sh
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 ```
+
+## Plugin bundle via secret mount
+
+File: `hermes_v1alpha1_hermesagent_plugins.yaml`
+
+- Uses `spec.secretRefs` as the supported plugin delivery mechanism
+- Mounts the plugin bundle at `/var/run/hermes/secrets/hermesagent-plugins`
+- Secret updates trigger a reconcile and pod rollout
+- Keeps plugin delivery on the existing operator API instead of introducing plugin-specific CRD fields
+
+Apply it with:
+
+```sh
+kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+```
+
+Before applying it:
+- replace the placeholder plugin file contents with your real plugin bundle
+- make sure your Hermes runtime image knows how to discover or load plugins from `/var/run/hermes/secrets/hermesagent-plugins`
+- keep plugin filenames stable if your runtime expects specific entrypoints
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+```
