@@ -337,6 +337,6 @@ jobs:
           fi
 
           printf '%s\n' "$output"
-          printf '%s' "$output" | grep -F "raw and configMapRef are mutually exclusive"
+          printf '%s' "$output" | grep -F "raw, configMapRef, and secretRef are mutually exclusive"
 
           kubectl delete namespace hermes-chart-e2e --wait=true --timeout=2m
