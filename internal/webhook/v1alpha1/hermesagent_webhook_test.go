@@ -138,7 +138,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.gatewayConfig.configMapRef.key"))
 		})
 
-		It("rejects invalid storage size, service port, network policy ports, and empty image pull secrets", func() {
+		It("rejects invalid storage size, service port, network policy ports, empty image pull secrets, and invalid file mounts", func() {
 			namespace := newNamespace()
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-settings-%d", time.Now().UnixNano()))
 			obj.Spec.Storage.Persistence.Size = "0Gi"
@@ -147,6 +147,16 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{0}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{70000}
 			obj.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{}}
+			obj.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+				MountPath:    "relative/path",
+				ConfigMapRef: &corev1.LocalObjectReference{Name: "plugins"},
+				SecretRef:    &corev1.LocalObjectReference{Name: "ssh-auth"},
+			}, {
+				MountPath: "/var/run/hermes/plugins",
+			}, {
+				MountPath: "/var/run/hermes/plugins",
+				SecretRef: &corev1.LocalObjectReference{},
+			}}
 
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
@@ -155,6 +165,12 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalTCPPorts[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalUDPPorts[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.imagePullSecrets[0].name"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[0]"))
+			Expect(err.Error()).To(ContainSubstring("mountPath must be absolute"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[1]"))
+			Expect(err.Error()).To(ContainSubstring("either configMapRef or secretRef must be set"))
+			Expect(err.Error()).To(ContainSubstring("duplicates fileMounts[1].mountPath"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].secretRef.name"))
 		})
 
 		It("rejects inline terminal backend mismatches", func() {
@@ -190,6 +206,10 @@ var _ = Describe("HermesAgent Webhook", func() {
 				SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},
 			}}
 			obj.Spec.SecretRefs = []corev1.LocalObjectReference{{Name: "ssh-auth"}}
+			obj.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+				MountPath:    "/var/run/hermes/plugins",
+				ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+			}}
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478}
 

@@ -189,6 +189,7 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 	allErrs = append(allErrs, validateEnv(specPath.Child("env"), obj.Spec.Env)...)
 	allErrs = append(allErrs, validateEnvFrom(specPath.Child("envFrom"), obj.Spec.EnvFrom)...)
 	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
+	allErrs = append(allErrs, validateFileMounts(specPath.Child("fileMounts"), obj.Spec.FileMounts)...)
 	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("imagePullSecrets"), obj.Spec.ImagePullSecrets)...)
 	allErrs = append(allErrs, validateService(specPath.Child("service"), obj.Spec.Service)...)
 	allErrs = append(allErrs, validateNetworkPolicy(specPath.Child("networkPolicy"), obj.Spec.NetworkPolicy)...)
@@ -318,6 +319,41 @@ func validateLocalObjectReferences(path *field.Path, refs []corev1.LocalObjectRe
 	for i, ref := range refs {
 		if ref.Name == "" {
 			allErrs = append(allErrs, field.Required(path.Index(i).Child("name"), "name is required"))
+		}
+	}
+	return allErrs
+}
+
+func validateFileMounts(path *field.Path, mounts []hermesv1alpha1.HermesAgentFileMountSpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	seenMountPaths := map[string]int{}
+	for i, mount := range mounts {
+		mountPath := path.Index(i)
+		hasConfigMap := mount.ConfigMapRef != nil
+		hasSecret := mount.SecretRef != nil
+		switch {
+		case hasConfigMap && hasSecret:
+			allErrs = append(allErrs, field.Invalid(mountPath, mount, "configMapRef and secretRef are mutually exclusive"))
+		case !hasConfigMap && !hasSecret:
+			allErrs = append(allErrs, field.Invalid(mountPath, mount, "either configMapRef or secretRef must be set"))
+		}
+		if mount.MountPath == "" {
+			allErrs = append(allErrs, field.Required(mountPath.Child("mountPath"), "mountPath is required"))
+		} else {
+			if mount.MountPath[0] != '/' {
+				allErrs = append(allErrs, field.Invalid(mountPath.Child("mountPath"), mount.MountPath, "mountPath must be absolute"))
+			}
+			if previous, exists := seenMountPaths[mount.MountPath]; exists {
+				allErrs = append(allErrs, field.Invalid(mountPath.Child("mountPath"), mount.MountPath, fmt.Sprintf("mountPath duplicates fileMounts[%d].mountPath", previous)))
+			} else {
+				seenMountPaths[mount.MountPath] = i
+			}
+		}
+		if mount.ConfigMapRef != nil && mount.ConfigMapRef.Name == "" {
+			allErrs = append(allErrs, field.Required(mountPath.Child("configMapRef", "name"), "name is required when configMapRef is set"))
+		}
+		if mount.SecretRef != nil && mount.SecretRef.Name == "" {
+			allErrs = append(allErrs, field.Required(mountPath.Child("secretRef", "name"), "name is required when secretRef is set"))
 		}
 	}
 	return allErrs

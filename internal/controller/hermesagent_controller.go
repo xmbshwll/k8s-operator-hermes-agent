@@ -231,6 +231,32 @@ func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, age
 		return referencedInputs, err
 	}
 
+	for _, fileMount := range agent.Spec.FileMounts {
+		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
+			configMap := &corev1.ConfigMap{}
+			err := r.Get(ctx, client.ObjectKey{Name: fileMount.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				configMap = nil
+			}
+			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newConfigMapProjectionSnapshot(fileMount.ConfigMapRef.Name, configMap))
+			continue
+		}
+		if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
+			secret := &corev1.Secret{}
+			err := r.Get(ctx, client.ObjectKey{Name: fileMount.SecretRef.Name, Namespace: agent.Namespace}, secret)
+			if err != nil {
+				if !apierrors.IsNotFound(err) {
+					return referencedInputs, err
+				}
+				secret = nil
+			}
+			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newSecretProjectionSnapshot(fileMount.SecretRef.Name, secret))
+		}
+	}
+
 	for _, envVar := range agent.Spec.Env {
 		if envVar.ValueFrom == nil {
 			continue
@@ -349,6 +375,11 @@ func referencesConfigMap(agent *hermesv1alpha1.HermesAgent, name string) bool {
 			return true
 		}
 	}
+	for _, fileMount := range agent.Spec.FileMounts {
+		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name == name {
+			return true
+		}
+	}
 	return false
 }
 
@@ -368,6 +399,11 @@ func referencesSecret(agent *hermesv1alpha1.HermesAgent, name string) bool {
 	}
 	for _, secretRef := range agent.Spec.SecretRefs {
 		if secretRef.Name == name {
+			return true
+		}
+	}
+	for _, fileMount := range agent.Spec.FileMounts {
+		if fileMount.SecretRef != nil && fileMount.SecretRef.Name == name {
 			return true
 		}
 	}
@@ -616,6 +652,9 @@ func missingReferenceMessages(referencedInputs referencedInputState) []string {
 	}
 
 	for _, snapshot := range referencedInputs.FileRefs {
+		appendMessages(snapshot)
+	}
+	for _, snapshot := range referencedInputs.FileMountRefs {
 		appendMessages(snapshot)
 	}
 	for _, snapshot := range referencedInputs.EnvValueRefs {

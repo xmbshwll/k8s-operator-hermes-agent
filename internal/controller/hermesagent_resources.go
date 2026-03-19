@@ -63,10 +63,11 @@ type configPlan struct {
 }
 
 type referencedInputState struct {
-	FileRefs     []referencedObjectSnapshot `json:"fileRefs,omitempty"`
-	EnvValueRefs []referencedObjectSnapshot `json:"envValueRefs,omitempty"`
-	EnvFrom      []referencedObjectSnapshot `json:"envFrom,omitempty"`
-	SecretRefs   []referencedObjectSnapshot `json:"secretRefs,omitempty"`
+	FileRefs      []referencedObjectSnapshot `json:"fileRefs,omitempty"`
+	FileMountRefs []referencedObjectSnapshot `json:"fileMountRefs,omitempty"`
+	EnvValueRefs  []referencedObjectSnapshot `json:"envValueRefs,omitempty"`
+	EnvFrom       []referencedObjectSnapshot `json:"envFrom,omitempty"`
+	SecretRefs    []referencedObjectSnapshot `json:"secretRefs,omitempty"`
 }
 
 type referencedObjectSnapshot struct {
@@ -92,6 +93,10 @@ func buildConfigPlan(agent *hermesv1alpha1.HermesAgent) (configPlan, error) {
 }
 
 func buildConfigPlanWithReferences(agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) (configPlan, error) {
+	if err := validateFileMountSpecs(agent.Spec.FileMounts); err != nil {
+		return configPlan{}, err
+	}
+
 	files := []resolvedConfigFile{}
 
 	configFile, err := resolveConfigFile(agent, "config", "config.yaml", agent.Spec.Config)
@@ -149,6 +154,37 @@ func resolveConfigFile(agent *hermesv1alpha1.HermesAgent, id, fileName string, s
 	return file, nil
 }
 
+func validateFileMountSpecs(mounts []hermesv1alpha1.HermesAgentFileMountSpec) error {
+	seenMountPaths := map[string]int{}
+	for i, mount := range mounts {
+		hasConfigMap := mount.ConfigMapRef != nil
+		hasSecret := mount.SecretRef != nil
+		switch {
+		case hasConfigMap && hasSecret:
+			return fmt.Errorf("spec.fileMounts[%d] cannot set both configMapRef and secretRef", i)
+		case !hasConfigMap && !hasSecret:
+			return fmt.Errorf("spec.fileMounts[%d] must set exactly one of configMapRef or secretRef", i)
+		}
+		if mount.MountPath == "" {
+			return fmt.Errorf("spec.fileMounts[%d].mountPath is required", i)
+		}
+		if !path.IsAbs(mount.MountPath) {
+			return fmt.Errorf("spec.fileMounts[%d].mountPath must be absolute", i)
+		}
+		if previous, exists := seenMountPaths[mount.MountPath]; exists {
+			return fmt.Errorf("spec.fileMounts[%d].mountPath duplicates spec.fileMounts[%d].mountPath", i, previous)
+		}
+		seenMountPaths[mount.MountPath] = i
+		if mount.ConfigMapRef != nil && mount.ConfigMapRef.Name == "" {
+			return fmt.Errorf("spec.fileMounts[%d].configMapRef.name is required", i)
+		}
+		if mount.SecretRef != nil && mount.SecretRef.Name == "" {
+			return fmt.Errorf("spec.fileMounts[%d].secretRef.name is required", i)
+		}
+	}
+	return nil
+}
+
 func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) podTemplateInputs {
 	inputs := podTemplateInputs{
 		Annotations: map[string]string{configHashAnnotation: plan.Hash},
@@ -193,6 +229,38 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 			MountPath: path.Join(hermesSecretBasePath, secretRef.Name),
 			ReadOnly:  true,
 		})
+	}
+
+	for i, fileMount := range agent.Spec.FileMounts {
+		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
+			volumeName := fmt.Sprintf("file-mount-%d", i)
+			inputs.Volumes = append(inputs.Volumes, corev1.Volume{
+				Name: volumeName,
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: *fileMount.ConfigMapRef},
+				},
+			})
+			inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: fileMount.MountPath,
+				ReadOnly:  true,
+			})
+			continue
+		}
+		if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
+			volumeName := fmt.Sprintf("file-mount-%d", i)
+			inputs.Volumes = append(inputs.Volumes, corev1.Volume{
+				Name: volumeName,
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{SecretName: fileMount.SecretRef.Name},
+				},
+			})
+			inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
+				Name:      volumeName,
+				MountPath: fileMount.MountPath,
+				ReadOnly:  true,
+			})
+		}
 	}
 
 	return inputs
@@ -347,16 +415,18 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 
 func computeConfigHash(agent *hermesv1alpha1.HermesAgent, plan configPlan, referencedInputs referencedInputState) string {
 	payload := struct {
-		Files            []resolvedConfigFile          `json:"files"`
-		Env              []corev1.EnvVar               `json:"env"`
-		EnvFrom          []corev1.EnvFromSource        `json:"envFrom"`
-		SecretRefs       []corev1.LocalObjectReference `json:"secretRefs"`
-		ReferencedInputs referencedInputState          `json:"referencedInputs,omitempty"`
+		Files            []resolvedConfigFile                      `json:"files"`
+		Env              []corev1.EnvVar                           `json:"env"`
+		EnvFrom          []corev1.EnvFromSource                    `json:"envFrom"`
+		SecretRefs       []corev1.LocalObjectReference             `json:"secretRefs"`
+		FileMounts       []hermesv1alpha1.HermesAgentFileMountSpec `json:"fileMounts"`
+		ReferencedInputs referencedInputState                      `json:"referencedInputs,omitempty"`
 	}{
 		Files:            plan.Files,
 		Env:              agent.Spec.Env,
 		EnvFrom:          agent.Spec.EnvFrom,
 		SecretRefs:       agent.Spec.SecretRefs,
+		FileMounts:       agent.Spec.FileMounts,
 		ReferencedInputs: referencedInputs,
 	}
 
@@ -412,9 +482,13 @@ func newConfigMapEnvFromSnapshot(name string, optional bool, configMap *corev1.C
 		Present:  configMap != nil,
 	}
 	if configMap != nil {
-		snapshot.Data = copyStringMap(configMap.Data)
+		snapshot.Data = copyConfigMapData(configMap)
 	}
 	return snapshot
+}
+
+func newConfigMapProjectionSnapshot(name string, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+	return newConfigMapEnvFromSnapshot(name, false, configMap)
 }
 
 func newSecretKeySnapshot(name, key string, optional bool, secret *corev1.Secret) referencedObjectSnapshot {
@@ -450,6 +524,10 @@ func newSecretSnapshot(name string, optional bool, secret *corev1.Secret) refere
 	return snapshot
 }
 
+func newSecretProjectionSnapshot(name string, secret *corev1.Secret) referencedObjectSnapshot {
+	return newSecretSnapshot(name, false, secret)
+}
+
 func configMapFileValue(configMap *corev1.ConfigMap, key string) (string, bool) {
 	if value, ok := configMap.Data[key]; ok {
 		return value, true
@@ -468,6 +546,20 @@ func copyStringMap(values map[string]string) map[string]string {
 	copied := make(map[string]string, len(values))
 	maps.Copy(copied, values)
 	return copied
+}
+
+func copyConfigMapData(configMap *corev1.ConfigMap) map[string]string {
+	values := copyStringMap(configMap.Data)
+	if len(configMap.BinaryData) == 0 {
+		return values
+	}
+	if values == nil {
+		values = map[string]string{}
+	}
+	for key, value := range configMap.BinaryData {
+		values[key] = base64.StdEncoding.EncodeToString(value)
+	}
+	return values
 }
 
 func encodeSecretData(values map[string][]byte) map[string]string {

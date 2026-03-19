@@ -215,7 +215,21 @@ func TestBuildConfigPlanRejectsMixedSource(t *testing.T) {
 	}
 }
 
-func TestBuildPodTemplateInputsIncludesConfigHashAndSecretMounts(t *testing.T) {
+func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+		MountPath:    "/var/run/hermes/plugins",
+		ConfigMapRef: &corev1.LocalObjectReference{Name: "plugins"},
+		SecretRef:    &corev1.LocalObjectReference{Name: "ssh-auth"},
+	}}
+
+	if _, err := buildConfigPlan(agent); err == nil {
+		t.Fatal("expected buildConfigPlan to reject invalid fileMounts")
+	}
+}
+
+func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
@@ -226,6 +240,10 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndSecretMounts(t *testing.T) {
 		SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},
 	}}
 	agent.Spec.SecretRefs = []corev1.LocalObjectReference{{Name: "hermes-secrets"}}
+	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+		MountPath:    "/var/run/hermes/plugins",
+		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+	}}
 
 	plan, err := buildConfigPlan(agent)
 	if err != nil {
@@ -239,15 +257,16 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndSecretMounts(t *testing.T) {
 	if len(inputs.EnvFrom) != 1 {
 		t.Fatalf("expected envFrom to be preserved, got %d entries", len(inputs.EnvFrom))
 	}
-	if len(inputs.Volumes) != 2 {
-		t.Fatalf("expected 2 volumes (config + secret), got %d", len(inputs.Volumes))
+	if len(inputs.Volumes) != 3 {
+		t.Fatalf("expected 3 volumes (config + secret + file mount), got %d", len(inputs.Volumes))
 	}
-	if len(inputs.VolumeMounts) != 2 {
-		t.Fatalf("expected 2 volume mounts (config + secret), got %d", len(inputs.VolumeMounts))
+	if len(inputs.VolumeMounts) != 3 {
+		t.Fatalf("expected 3 volume mounts (config + secret + file mount), got %d", len(inputs.VolumeMounts))
 	}
 	if inputs.Env[0].Name != "HERMES_HOME" || inputs.Env[0].Value != hermesHomePath {
 		t.Fatalf("expected HERMES_HOME env var to be injected, got %+v", inputs.Env[0])
 	}
+	requireVolumeMount(t, inputs.VolumeMounts, "file-mount-0", "/var/run/hermes/plugins")
 }
 
 func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
@@ -331,6 +350,40 @@ func TestConfigHashChangesWhenReferencedSecretContentChanges(t *testing.T) {
 	}
 	if basePlan.Hash == updatedPlan.Hash {
 		t.Fatal("expected config hash to change when referenced Secret content changes")
+	}
+}
+
+func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+		MountPath:    "/var/run/hermes/plugins",
+		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+	}, {
+		MountPath: "/var/run/hermes/ssh",
+		SecretRef: &corev1.LocalObjectReference{Name: "ssh-auth"},
+	}}
+
+	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileMountRefs: []referencedObjectSnapshot{
+			newConfigMapProjectionSnapshot("hermes-plugins", &corev1.ConfigMap{Data: map[string]string{"plugin.py": "first"}}),
+			newSecretProjectionSnapshot("ssh-auth", &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("first")}}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileMountRefs: []referencedObjectSnapshot{
+			newConfigMapProjectionSnapshot("hermes-plugins", &corev1.ConfigMap{Data: map[string]string{"plugin.py": "second"}}),
+			newSecretProjectionSnapshot("ssh-auth", &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("second")}}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(updated) returned error: %v", err)
+	}
+	if basePlan.Hash == updatedPlan.Hash {
+		t.Fatal("expected config hash to change when file mount content changes")
 	}
 }
 

@@ -61,7 +61,7 @@ File: `hermes_v1alpha1_hermesagent_ssh.yaml`
 
 - Shows how to switch Hermes `config.yaml` to `ssh` and keep the fallback CR field explicit
 - Supplies SSH host and user via a secret-backed environment source
-- Includes a mounted secret bundle for SSH auth material
+- Includes an explicit file mount for SSH auth material
 - Secret updates trigger a reconcile and pod rollout
 
 Apply it with:
@@ -74,7 +74,7 @@ Before applying it:
 - replace the placeholder SSH host, user, and model provider key
 - add your SSH private key and `known_hosts` content to the auth secret
 - set `config.raw.terminal.backend: ssh`; `spec.terminal.backend` is kept here as an explicit fallback/default
-- make sure your Hermes runtime image knows how to consume the mounted SSH auth bundle
+- make sure your Hermes runtime image knows how to consume the mounted SSH auth files at `/var/run/hermes/ssh`
 - leave `networkPolicy.enabled: true` unless you are intentionally supplying your own policy
 
 Remove it with:
@@ -141,8 +141,8 @@ kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
 
 File: `hermes_v1alpha1_hermesagent_plugins.yaml`
 
-- Uses `spec.secretRefs` as the supported plugin delivery mechanism
-- Mounts the plugin bundle at `/var/run/hermes/secrets/hermesagent-plugins`
+- Uses `spec.fileMounts` as the preferred plugin delivery mechanism
+- Mounts the plugin bundle at `/var/run/hermes/plugins`
 - Secret updates trigger a reconcile and pod rollout
 - Keeps plugin delivery on the existing operator API instead of introducing plugin-specific CRD fields
 
@@ -154,7 +154,7 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
 
 Before applying it:
 - replace the placeholder plugin file contents with your real plugin bundle
-- make sure your Hermes runtime image knows how to discover or load plugins from `/var/run/hermes/secrets/hermesagent-plugins`
+- make sure your Hermes runtime image knows how to discover or load plugins from `/var/run/hermes/plugins`
 - keep plugin filenames stable if your runtime expects specific entrypoints
 
 Remove it with:

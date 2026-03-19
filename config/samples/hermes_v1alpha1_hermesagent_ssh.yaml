@@ -53,8 +53,10 @@ spec:
   envFrom:
     - secretRef:
         name: hermesagent-ssh-env
-  secretRefs:
-    - name: hermesagent-ssh-auth
+  fileMounts:
+    - mountPath: /var/run/hermes/ssh
+      secretRef:
+        name: hermesagent-ssh-auth
   storage:
     persistence:
       enabled: true

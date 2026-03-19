@@ -47,6 +47,20 @@ type HermesAgentConfigSource struct {
 	ConfigMapRef *corev1.ConfigMapKeySelector `json:"configMapRef,omitempty"`
 }
 
+// HermesAgentFileMountSpec defines a projected ConfigMap or Secret mounted into the Hermes pod.
+type HermesAgentFileMountSpec struct {
+	// mountPath is the absolute directory path where the projected files are mounted.
+	MountPath string `json:"mountPath"`
+
+	// configMapRef points to a ConfigMap projected as files at mountPath.
+	// +optional
+	ConfigMapRef *corev1.LocalObjectReference `json:"configMapRef,omitempty"`
+
+	// secretRef points to a Secret projected as files at mountPath.
+	// +optional
+	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
+}
+
 // HermesAgentPersistenceSpec defines persistent storage for Hermes state.
 type HermesAgentPersistenceSpec struct {
 	// enabled controls whether a PVC is created.
@@ -184,9 +198,14 @@ type HermesAgentSpec struct {
 	// +optional
 	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
 
-	// secretRefs are additional Secrets the controller may project or reference.
+	// secretRefs are additional Secrets mounted under /var/run/hermes/secrets/<name>.
+	// This is the legacy shorthand path for secret bundle mounts.
 	// +optional
 	SecretRefs []corev1.LocalObjectReference `json:"secretRefs,omitempty"`
+
+	// fileMounts are additional ConfigMap or Secret projections mounted into the Hermes pod.
+	// +optional
+	FileMounts []HermesAgentFileMountSpec `json:"fileMounts,omitempty"`
 
 	// imagePullSecrets are image pull secrets for the managed Hermes pod.
 	// +optional

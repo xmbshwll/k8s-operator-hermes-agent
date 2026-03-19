@@ -26,7 +26,7 @@ See [`docs/architecture.md`](docs/architecture.md) for the design rationale and 
 A `HermesAgent` resource lets you declare:
 - the Hermes runtime image to run
 - Hermes `config.yaml` and `gateway.json`
-- environment variables and secret references
+- environment variables and file/secret references
 - workload-level image pull secrets, ServiceAccount identity, and pod placement controls
 - persistent storage settings
 - resource requests and limits
@@ -212,10 +212,11 @@ Each file can be supplied in one of two ways:
    - the controller mounts the referenced key directly
    - referenced `ConfigMap` changes trigger a reconcile and `StatefulSet` rollout so the subPath-mounted file is refreshed safely
 
-Environment and secrets are handled separately:
+Environment and mounted files are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
-- `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`, which is the supported file-bundle path for things like SSH material and plugin bundles
+- `spec.secretRefs` keeps the simple legacy secret-bundle path under `/var/run/hermes/secrets/<name>`
+- `spec.fileMounts` mounts a whole `ConfigMap` or `Secret` at an explicit path, which is the preferred path for new file-based runtime inputs such as plugins, SSH material, prompts, or certificates
 
 Workload placement, registry auth, and workload identity are also configured per `HermesAgent`:
 - `spec.imagePullSecrets` applies to the managed Hermes pod when the runtime image lives in a private registry
@@ -225,7 +226,7 @@ Workload placement, registry auth, and workload identity are also configured per
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`. The controller derives operator-side wiring such as generated SSH egress rules from the resolved config content and only falls back to `spec.terminal.backend` when the config omits a backend.
 
 Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
-That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
+That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, `spec.secretRefs`, and `spec.fileMounts` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
 
 ## Admission and defaulting
 
@@ -235,7 +236,8 @@ That means invalid specs are rejected on create and update instead of being acce
 The webhook currently enforces and/or defaults:
 - `raw` and `configMapRef` are mutually exclusive for `spec.config` and `spec.gatewayConfig`
 - referenced config keys must include both `name` and `key`
-- `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` must use complete references
+- `spec.env[].valueFrom`, `spec.envFrom`, `spec.secretRefs`, `spec.fileMounts`, and `spec.imagePullSecrets` must use complete references
+- file mounts must use exactly one source, an absolute `mountPath`, and unique mount paths
 - storage sizes must be valid Kubernetes quantities greater than zero
 - enabled services must use a positive port
 - runtime defaults for mode, image tag/pull policy, persistence, service settings, network policy, and probe profiles

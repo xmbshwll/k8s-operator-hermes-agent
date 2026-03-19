@@ -1210,6 +1210,51 @@ spec:
                       x-kubernetes-map-type: atomic
                   type: object
                 type: array
+              fileMounts:
+                description: fileMounts are additional ConfigMap or Secret projections
+                  mounted into the Hermes pod.
+                items:
+                  description: HermesAgentFileMountSpec defines a projected ConfigMap
+                    or Secret mounted into the Hermes pod.
+                  properties:
+                    configMapRef:
+                      description: configMapRef points to a ConfigMap projected as
+                        files at mountPath.
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                    mountPath:
+                      description: mountPath is the absolute directory path where
+                        the projected files are mounted.
+                      type: string
+                    secretRef:
+                      description: secretRef points to a Secret projected as files
+                        at mountPath.
+                      properties:
+                        name:
+                          default: ""
+                          description: |-
+                            Name of the referent.
+                            This field is effectively required, but due to backwards compatibility is
+                            allowed to be empty. Instances of this type with an empty value here are
+                            almost certainly wrong.
+                            More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                          type: string
+                      type: object
+                      x-kubernetes-map-type: atomic
+                  required:
+                  - mountPath
+                  type: object
+                type: array
               gatewayConfig:
                 description: gatewayConfig provides the Hermes gateway.json content.
                 properties:
@@ -1454,8 +1499,9 @@ spec:
                     type: object
                 type: object
               secretRefs:
-                description: secretRefs are additional Secrets the controller may
-                  project or reference.
+                description: |-
+                  secretRefs are additional Secrets mounted under /var/run/hermes/secrets/<name>.
+                  This is the legacy shorthand path for secret bundle mounts.
                 items:
                   description: |-
                     LocalObjectReference contains enough information to let you locate the

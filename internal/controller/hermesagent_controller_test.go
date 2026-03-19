@@ -254,6 +254,15 @@ func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
 			}},
 		},
 	}
+	fileMountAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "mounts-configmap", Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+				MountPath:    "/var/run/hermes/plugins",
+				ConfigMapRef: &corev1.LocalObjectReference{Name: "shared-config"},
+			}},
+		},
+	}
 	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-configmap", Namespace: testNamespace},
 	}
@@ -269,16 +278,23 @@ func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(referencingAgent, nonReferencingAgent, otherNamespaceAgent).
+		WithObjects(referencingAgent, fileMountAgent, nonReferencingAgent, otherNamespaceAgent).
 		Build()
 
 	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
 	requests := reconciler.findAgentsForConfigMap(context.Background(), &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace}})
-	if len(requests) != 1 {
-		t.Fatalf("expected 1 reconcile request, got %d", len(requests))
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 reconcile requests, got %d", len(requests))
 	}
-	if requests[0].NamespacedName != client.ObjectKeyFromObject(referencingAgent) {
-		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests[0].NamespacedName)
+	got := map[client.ObjectKey]bool{}
+	for _, request := range requests {
+		got[request.NamespacedName] = true
+	}
+	if !got[client.ObjectKeyFromObject(referencingAgent)] {
+		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests)
+	}
+	if !got[client.ObjectKeyFromObject(fileMountAgent)] {
+		t.Fatalf("expected request for %s, got %+v", fileMountAgent.Name, requests)
 	}
 }
 
@@ -307,6 +323,15 @@ func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 			SecretRefs: []corev1.LocalObjectReference{{Name: "shared-secret"}},
 		},
 	}
+	fileMountAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: "mounts-secret", Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+				MountPath: "/var/run/hermes/ssh",
+				SecretRef: &corev1.LocalObjectReference{Name: "shared-secret"},
+			}},
+		},
+	}
 	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-secret", Namespace: testNamespace},
 		Spec: hermesv1alpha1.HermesAgentSpec{
@@ -316,16 +341,23 @@ func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(referencingAgent, nonReferencingAgent).
+		WithObjects(referencingAgent, fileMountAgent, nonReferencingAgent).
 		Build()
 
 	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
 	requests := reconciler.findAgentsForSecret(context.Background(), &corev1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "shared-secret", Namespace: testNamespace}})
-	if len(requests) != 1 {
-		t.Fatalf("expected 1 reconcile request, got %d", len(requests))
+	if len(requests) != 2 {
+		t.Fatalf("expected 2 reconcile requests, got %d", len(requests))
 	}
-	if requests[0].NamespacedName != client.ObjectKeyFromObject(referencingAgent) {
-		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests[0].NamespacedName)
+	got := map[client.ObjectKey]bool{}
+	for _, request := range requests {
+		got[request.NamespacedName] = true
+	}
+	if !got[client.ObjectKeyFromObject(referencingAgent)] {
+		t.Fatalf("expected request for %s, got %+v", referencingAgent.Name, requests)
+	}
+	if !got[client.ObjectKeyFromObject(fileMountAgent)] {
+		t.Fatalf("expected request for %s, got %+v", fileMountAgent.Name, requests)
 	}
 }
 

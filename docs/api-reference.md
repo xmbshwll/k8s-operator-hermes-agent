@@ -25,6 +25,7 @@ Scope: namespaced
 | `spec.env` | array | no | empty | Explicit environment variables |
 | `spec.envFrom` | array | no | empty | Import env from `ConfigMap` or `Secret` |
 | `spec.secretRefs` | array | no | empty | Mount named secrets under `/var/run/hermes/secrets/<name>` |
+| `spec.fileMounts` | array | no | empty | Mount ConfigMaps or Secrets as files at explicit paths |
 | `spec.imagePullSecrets` | array | no | empty | Image pull secrets for the Hermes workload pod |
 | `spec.serviceAccountName` | string | no | empty | ServiceAccount for the Hermes workload pod |
 | `spec.nodeSelector` | object | no | empty | Node selector for the Hermes workload pod |
@@ -100,8 +101,35 @@ List of named `Secret` objects mounted as read-only directories:
 /var/run/hermes/secrets/<secret-name>
 ```
 
-Use this for file bundles the runtime image consumes directly, such as SSH auth material or Hermes plugin bundles.
+Use this for the simple legacy secret-bundle path.
+For new work, prefer `spec.fileMounts` when you want an explicit mount path or a `ConfigMap` source.
 Referenced secret content is hashed into the pod template.
+Changes trigger a rollout.
+
+### `spec.fileMounts`
+Mount a whole `ConfigMap` or `Secret` as a read-only directory at an explicit path.
+Each entry must set:
+- `mountPath`
+- exactly one of `configMapRef` or `secretRef`
+
+```yaml
+spec:
+  fileMounts:
+    - mountPath: /var/run/hermes/plugins
+      configMapRef:
+        name: hermes-plugins
+    - mountPath: /var/run/hermes/ssh
+      secretRef:
+        name: hermes-ssh-auth
+```
+
+Rules:
+- `mountPath` must be absolute
+- mount paths must be unique within `spec.fileMounts`
+- exactly one source is allowed per entry
+
+Use this for plugin bundles, SSH material, prompt packs, certificates, or other runtime assets that Hermes consumes as files.
+Referenced `ConfigMap` and `Secret` content is hashed into the pod template.
 Changes trigger a rollout.
 
 ## Workload pod placement and registry auth
@@ -339,7 +367,8 @@ See `docs/troubleshooting.md` for common reasons and remediation steps.
 The webhook currently rejects:
 - mixed `raw` and `configMapRef` on the same config field
 - incomplete config references
-- incomplete `env`, `envFrom`, `secretRefs`, or `imagePullSecrets` references
+- incomplete `env`, `envFrom`, `secretRefs`, `fileMounts`, or `imagePullSecrets` references
+- invalid file mount source combinations or duplicate file mount paths
 - invalid storage sizes
 - invalid enabled Service ports
 - invalid additional NetworkPolicy ports

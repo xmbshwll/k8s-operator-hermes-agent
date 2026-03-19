@@ -34,8 +34,10 @@ spec:
       {
         "platforms": {}
       }
-  secretRefs:
-    - name: hermesagent-plugins
+  fileMounts:
+    - mountPath: /var/run/hermes/plugins
+      secretRef:
+        name: hermesagent-plugins
   storage:
     persistence:
       enabled: true
