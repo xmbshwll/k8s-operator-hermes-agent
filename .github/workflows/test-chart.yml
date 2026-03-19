@@ -73,35 +73,37 @@ jobs:
 
       - name: Validate observability and network hardening render path
         run: |
+          rendered_chart=/tmp/chart-render.yaml
+
           helm template k8s-operator-hermes-agent ./charts/chart \
             --set metrics.serviceMonitor.enabled=true \
             --set metrics.networkPolicy.enabled=true \
             --set webhook.networkPolicy.enabled=true \
-            --api-versions monitoring.coreos.com/v1/ServiceMonitor > /tmp/chart-render.yaml
+            --api-versions monitoring.coreos.com/v1/ServiceMonitor > "${rendered_chart}"
 
-          grep -F "kind: ServiceMonitor" /tmp/chart-render.yaml
-          grep -F "name: k8s-operator-hermes-agent-metrics-monitor" /tmp/chart-render.yaml
-          grep -F "name: k8s-operator-hermes-agent-allow-metrics-traffic" /tmp/chart-render.yaml
-          grep -F "name: k8s-operator-hermes-agent-allow-webhook-traffic" /tmp/chart-render.yaml
+          for expected_line in \
+            "kind: ServiceMonitor" \
+            "name: k8s-operator-hermes-agent-metrics-monitor" \
+            "name: k8s-operator-hermes-agent-allow-metrics-traffic" \
+            "name: k8s-operator-hermes-agent-allow-webhook-traffic"; do
+            grep -F "${expected_line}" "${rendered_chart}"
+          done
 
       - name: Validate observability resources stay disabled by default
         run: |
-          helm template k8s-operator-hermes-agent ./charts/chart > /tmp/chart-render-defaults.yaml
+          rendered_chart=/tmp/chart-render-defaults.yaml
 
-          if grep -Fq "kind: ServiceMonitor" /tmp/chart-render-defaults.yaml; then
-            echo "ServiceMonitor should not render by default" >&2
-            exit 1
-          fi
+          helm template k8s-operator-hermes-agent ./charts/chart > "${rendered_chart}"
 
-          if grep -Fq "allow-metrics-traffic" /tmp/chart-render-defaults.yaml; then
-            echo "metrics ingress NetworkPolicy should not render by default" >&2
-            exit 1
-          fi
-
-          if grep -Fq "allow-webhook-traffic" /tmp/chart-render-defaults.yaml; then
-            echo "webhook ingress NetworkPolicy should not render by default" >&2
-            exit 1
-          fi
+          for forbidden_line in \
+            "kind: ServiceMonitor" \
+            "allow-metrics-traffic" \
+            "allow-webhook-traffic"; do
+            if grep -Fq "${forbidden_line}" "${rendered_chart}"; then
+              echo "${forbidden_line} should not render by default" >&2
+              exit 1
+            fi
+          done
 
       - name: Deploy manager via Helm
         run: make helm-deploy IMG=controller:latest
