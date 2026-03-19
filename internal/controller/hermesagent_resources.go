@@ -246,43 +246,24 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent) *networkingv1.NetworkPolicy {
 	labels := resourceLabels(agent)
 	egress := []networkingv1.NetworkPolicyEgressRule{
-		{
-			Ports: []networkingv1.NetworkPolicyPort{
-				{Protocol: protocolPtr(corev1.ProtocolUDP), Port: portIntOrString(networkPolicyDNSPort)},
-				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyDNSPort)},
-			},
-		},
-		{
-			Ports: []networkingv1.NetworkPolicyPort{
-				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyHTTPPort)},
-				{Protocol: protocolPtr(corev1.ProtocolTCP), Port: portIntOrString(networkPolicyHTTPSPort)},
-			},
-		},
+		networkPolicyRule(
+			append(networkPolicyPorts(corev1.ProtocolUDP, []int32{networkPolicyDNSPort}), networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicyDNSPort})...)...,
+		),
+		networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicyHTTPPort, networkPolicyHTTPSPort})...),
 	}
 
-	defaultTCPPorts := map[int32]struct{}{
-		networkPolicyDNSPort:   {},
-		networkPolicyHTTPPort:  {},
-		networkPolicyHTTPSPort: {},
-	}
-	defaultUDPPorts := map[int32]struct{}{
-		networkPolicyDNSPort: {},
-	}
+	defaultTCPPorts := networkPolicyPortSet(networkPolicyDNSPort, networkPolicyHTTPPort, networkPolicyHTTPSPort)
+	defaultUDPPorts := networkPolicyPortSet(networkPolicyDNSPort)
 	if terminalBackend(agent) == "ssh" {
 		defaultTCPPorts[networkPolicySSHPort] = struct{}{}
-		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
-			Ports: []networkingv1.NetworkPolicyPort{{
-				Protocol: protocolPtr(corev1.ProtocolTCP),
-				Port:     portIntOrString(networkPolicySSHPort),
-			}},
-		})
+		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicySSHPort})...))
 	}
 
 	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalTCPPorts, defaultTCPPorts); len(ports) > 0 {
-		egress = append(egress, networkingv1.NetworkPolicyEgressRule{Ports: networkPolicyPorts(corev1.ProtocolTCP, ports)})
+		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, ports)...))
 	}
 	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalUDPPorts, defaultUDPPorts); len(ports) > 0 {
-		egress = append(egress, networkingv1.NetworkPolicyEgressRule{Ports: networkPolicyPorts(corev1.ProtocolUDP, ports)})
+		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolUDP, ports)...))
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -749,6 +730,18 @@ func additionalNetworkPolicyPorts(ports []int32, existing map[int32]struct{}) []
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
 	return ordered
+}
+
+func networkPolicyPortSet(ports ...int32) map[int32]struct{} {
+	set := make(map[int32]struct{}, len(ports))
+	for _, port := range ports {
+		set[port] = struct{}{}
+	}
+	return set
+}
+
+func networkPolicyRule(ports ...networkingv1.NetworkPolicyPort) networkingv1.NetworkPolicyEgressRule {
+	return networkingv1.NetworkPolicyEgressRule{Ports: ports}
 }
 
 func networkPolicyPorts(protocol corev1.Protocol, ports []int32) []networkingv1.NetworkPolicyPort {

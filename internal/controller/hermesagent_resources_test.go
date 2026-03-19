@@ -537,6 +537,26 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 	requireNetworkPolicyPort(t, extraUDPRule.Ports, corev1.ProtocolUDP, 3478)
 }
 
+func TestAdditionalNetworkPolicyPortsDeduplicatesAndSortsPorts(t *testing.T) {
+	existing := networkPolicyPortSet(networkPolicyDNSPort, networkPolicyHTTPSPort)
+	ports := additionalNetworkPolicyPorts([]int32{8443, networkPolicyHTTPSPort, 8081, 8443, networkPolicyDNSPort}, existing)
+	if len(ports) != 2 {
+		t.Fatalf("expected 2 additional ports after deduplication, got %+v", ports)
+	}
+	if ports[0] != 8081 || ports[1] != 8443 {
+		t.Fatalf("expected sorted additional ports [8081 8443], got %+v", ports)
+	}
+}
+
+func TestNetworkPolicyPortsUsesRequestedProtocol(t *testing.T) {
+	ports := networkPolicyPorts(corev1.ProtocolUDP, []int32{3478, 5353})
+	if len(ports) != 2 {
+		t.Fatalf("expected 2 network policy ports, got %+v", ports)
+	}
+	requireNetworkPolicyPort(t, ports, corev1.ProtocolUDP, 3478)
+	requireNetworkPolicyPort(t, ports, corev1.ProtocolUDP, 5353)
+}
+
 func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
