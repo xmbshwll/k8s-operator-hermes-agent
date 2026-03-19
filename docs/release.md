@@ -68,6 +68,7 @@ git push origin v<version>
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`.
+That workflow now runs validation jobs first and only publishes artifacts after unit/integration tests, chart install validation, upgrade validation, and the full e2e suite all pass in the same tagged workflow.
 
 ## What the release workflow does
 

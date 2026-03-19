@@ -5,14 +5,357 @@ on:
     tags:
       - "v*"
 
-permissions:
-  contents: write
-  packages: write
-
 jobs:
-  release:
+  validate-unit:
+    name: Validate unit and integration tests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: |
+          go mod tidy
+          make test
+
+  validate-chart:
+    name: Validate chart install and local upgrade flow
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Create kind cluster
+        run: kind create cluster
+
+      - name: Prepare validation images
+        run: |
+          go mod tidy
+          make docker-build IMG=controller:release-validation
+          docker build -t example.com/hermes-agent-e2e:v0.0.1 ./test/e2e/testdata/hermes-runtime
+          kind load docker-image controller:release-validation
+          kind load docker-image example.com/hermes-agent-e2e:v0.0.1
+
+      - name: Install Helm
+        run: make install-helm
+
+      - name: Install cert-manager via Helm
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait \
+            --timeout 300s
+
+      - name: Lint Helm chart
+        run: helm lint ./charts/chart
+
+      - name: Deploy manager via Helm
+        run: |
+          helm upgrade --install k8s-operator-hermes-agent ./charts/chart \
+            --namespace k8s-operator-hermes-agent-system \
+            --create-namespace \
+            --set image.repository=controller \
+            --set image.tag=release-validation \
+            --wait \
+            --timeout 300s
+
+      - name: Validate explicit CRD-first Helm upgrade flow
+        run: |
+          make build-crd-bundle
+          kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
+          helm upgrade k8s-operator-hermes-agent ./charts/chart \
+            --namespace k8s-operator-hermes-agent-system \
+            --set image.repository=controller \
+            --set image.tag=release-validation \
+            --wait \
+            --timeout 300s
+
+      - name: Validate HermesAgent flow through Helm install
+        run: |
+          kubectl create namespace hermes-chart-release
+          kubectl label --overwrite namespace hermes-chart-release pod-security.kubernetes.io/enforce=restricted
+
+          sed \
+            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-release.yaml
+
+          kubectl apply -n hermes-chart-release -f /tmp/hermesagent-chart-release.yaml
+          kubectl wait -n hermes-chart-release --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
+          kubectl rollout status -n hermes-chart-release statefulset/hermesagent-sample --timeout=5m
+
+      - name: Validate webhook rejection path
+        run: |
+          cat <<'EOF' >/tmp/hermesagent-invalid.yaml
+          apiVersion: hermes.nous.ai/v1alpha1
+          kind: HermesAgent
+          metadata:
+            name: hermesagent-invalid
+            namespace: hermes-chart-release
+          spec:
+            image:
+              repository: example.com/hermes-agent-e2e
+            config:
+              raw: |
+                model: anthropic/claude-opus-4.1
+              configMapRef:
+                name: shared-config
+                key: config.yaml
+          EOF
+
+          set +e
+          output=$(kubectl apply -f /tmp/hermesagent-invalid.yaml 2>&1)
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "expected invalid HermesAgent admission to fail" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$output"
+          printf '%s' "$output" | grep -F "raw and configMapRef are mutually exclusive"
+
+  validate-upgrade:
+    name: Validate upgrade from previous published chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Create kind cluster
+        run: kind create cluster
+
+      - name: Derive release metadata
+        id: vars
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#v}"
+          repository_path="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+          owner_path="$(dirname "${repository_path}")"
+          previous_tag="$(git tag --list 'v*' --sort=-version:refname | grep -v "^${tag}$" | head -n1 || true)"
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "image_repo=ghcr.io/${repository_path}" >> "${GITHUB_OUTPUT}"
+          echo "chart_ref=oci://ghcr.io/${owner_path}/charts/k8s-operator-hermes-agent" >> "${GITHUB_OUTPUT}"
+          echo "previous_tag=${previous_tag}" >> "${GITHUB_OUTPUT}"
+          echo "previous_version=${previous_tag#v}" >> "${GITHUB_OUTPUT}"
+
+      - name: Skip when no previous release exists
+        if: steps.vars.outputs.previous_tag == ''
+        run: echo "No previous release tag found; skipping upgrade validation"
+
+      - name: Prepare validation images
+        if: steps.vars.outputs.previous_tag != ''
+        run: |
+          go mod tidy
+          make docker-build IMG=controller:release-validation
+          docker build -t example.com/hermes-agent-e2e:v0.0.1 ./test/e2e/testdata/hermes-runtime
+          kind load docker-image controller:release-validation
+          kind load docker-image example.com/hermes-agent-e2e:v0.0.1
+
+      - name: Install Helm
+        if: steps.vars.outputs.previous_tag != ''
+        run: make install-helm
+
+      - name: Install cert-manager via Helm
+        if: steps.vars.outputs.previous_tag != ''
+        run: |
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          helm upgrade --install cert-manager jetstack/cert-manager \
+            --namespace cert-manager \
+            --create-namespace \
+            --set crds.enabled=true \
+            --wait \
+            --timeout 300s
+
+      - name: Login to GHCR for previous release artifacts
+        if: steps.vars.outputs.previous_tag != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install previous published chart and image
+        if: steps.vars.outputs.previous_tag != ''
+        run: |
+          docker pull ${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.previous_tag }}
+          kind load docker-image ${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.previous_tag }}
+
+          helm upgrade --install k8s-operator-hermes-agent-upgrade ${{ steps.vars.outputs.chart_ref }} \
+            --version ${{ steps.vars.outputs.previous_version }} \
+            --namespace k8s-operator-hermes-agent-upgrade-system \
+            --create-namespace \
+            --wait \
+            --timeout 300s
+
+      - name: Upgrade previous release to the current chart
+        if: steps.vars.outputs.previous_tag != ''
+        run: |
+          make build-crd-bundle
+          kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
+
+          helm upgrade k8s-operator-hermes-agent-upgrade ./charts/chart \
+            --namespace k8s-operator-hermes-agent-upgrade-system \
+            --set image.repository=controller \
+            --set image.tag=release-validation \
+            --wait \
+            --timeout 300s
+
+      - name: Validate HermesAgent flow after upgrade
+        if: steps.vars.outputs.previous_tag != ''
+        run: |
+          kubectl create namespace hermes-chart-upgrade
+          kubectl label --overwrite namespace hermes-chart-upgrade pod-security.kubernetes.io/enforce=restricted
+
+          sed \
+            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-upgrade.yaml
+
+          kubectl apply -n hermes-chart-upgrade -f /tmp/hermesagent-chart-upgrade.yaml
+          kubectl wait -n hermes-chart-upgrade --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
+          kubectl rollout status -n hermes-chart-upgrade statefulset/hermesagent-sample --timeout=5m
+
+  validate-e2e:
+    name: Validate full e2e suite
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install the latest version of kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Verify kind installation
+        run: kind version
+
+      - name: Run e2e tests
+        run: |
+          go mod tidy
+          make test-e2e
+
+  publish:
     name: Publish release artifacts
     runs-on: ubuntu-latest
+    needs:
+      - validate-unit
+      - validate-chart
+      - validate-upgrade
+      - validate-e2e
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Clone the code
         uses: actions/checkout@v4
