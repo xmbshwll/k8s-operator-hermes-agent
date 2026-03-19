@@ -1028,6 +1028,61 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "InvalidConfig", "cannot set both raw and configMapRef")
 }
 
+func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{
+				Raw: testInlineConfig,
+				ConfigMapRef: &corev1.ConfigMapKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"},
+					Key:                  "config.yaml",
+				},
+			},
+		},
+	}
+
+	recorder := record.NewFakeRecorder(10)
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme, Recorder: recorder}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "InvalidConfig")
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	requireStatusCondition(t, updatedAgent.Status, conditionTypeConfigReady, metav1.ConditionFalse, "InvalidConfig")
+}
+
 func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
