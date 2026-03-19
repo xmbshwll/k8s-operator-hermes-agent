@@ -898,6 +898,67 @@ func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 	}
 }
 
+func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	enabled := true
+	configMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
+		Data: map[string]string{
+			"config.yaml": "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n",
+		},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-configmap"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
+				Key:                  "config.yaml",
+			}},
+			Terminal:      hermesv1alpha1.HermesAgentTerminalSpec{Backend: "local"},
+			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, configMap).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	var networkPolicy networkingv1.NetworkPolicy
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &networkPolicy); err != nil {
+		t.Fatalf("get NetworkPolicy returned error: %v", err)
+	}
+	if len(networkPolicy.Spec.Egress) != 3 {
+		t.Fatalf("expected referenced ssh config to include ssh egress rule, got %d egress rules", len(networkPolicy.Spec.Egress))
+	}
+	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[2].Ports, corev1.ProtocolTCP, networkPolicySSHPort)
+}
+
 func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {

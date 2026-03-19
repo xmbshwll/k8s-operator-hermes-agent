@@ -74,12 +74,12 @@ type HermesAgentStorageSpec struct {
 	Persistence HermesAgentPersistenceSpec `json:"persistence,omitempty"`
 }
 
-// HermesAgentTerminalSpec defines operator-side terminal wiring for Hermes.
+// HermesAgentTerminalSpec defines terminal defaults for operator-side wiring.
 type HermesAgentTerminalSpec struct {
-	// backend declares the terminal backend the operator should wire for this pod.
-	// Keep this in sync with the backend configured in Hermes itself.
-	// The operator uses this for Kubernetes-side behavior such as generated egress rules;
-	// the runtime image still reads its own terminal backend from config.yaml.
+	// backend is the fallback terminal backend the operator should assume when it
+	// cannot derive one from the resolved Hermes config.
+	// When config.yaml declares terminal.backend, that config value is the source of
+	// truth for operator-side behavior such as generated SSH egress rules.
 	// +kubebuilder:validation:Enum=local;ssh
 	// +kubebuilder:default:="local"
 	Backend string `json:"backend,omitempty"`
@@ -192,7 +192,7 @@ type HermesAgentSpec struct {
 	// +optional
 	Storage HermesAgentStorageSpec `json:"storage,omitempty"`
 
-	// terminal defines the terminal backend Hermes should use.
+	// terminal defines fallback terminal wiring when config.yaml does not declare a backend.
 	// +optional
 	Terminal HermesAgentTerminalSpec `json:"terminal,omitempty"`
 

@@ -473,7 +473,7 @@ func TestBuildNetworkPolicyUsesEgressOnlyDefaults(t *testing.T) {
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 
-	networkPolicy := buildNetworkPolicy(agent)
+	networkPolicy := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputState{}))
 	if networkPolicy.Name != testAgentName {
 		t.Fatalf("expected NetworkPolicy name %q, got %q", testAgentName, networkPolicy.Name)
 	}
@@ -514,7 +514,7 @@ func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
 	agent.Namespace = testNamespace
 	agent.Spec.Terminal.Backend = "ssh"
 
-	networkPolicy := buildNetworkPolicy(agent)
+	networkPolicy := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputState{}))
 	if len(networkPolicy.Spec.Egress) != 3 {
 		t.Fatalf("expected 3 egress rules for ssh backend, got %d", len(networkPolicy.Spec.Egress))
 	}
@@ -534,7 +534,7 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 	agent.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443, networkPolicyHTTPSPort, 8081, networkPolicySSHPort}
 	agent.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478, networkPolicyDNSPort}
 
-	networkPolicy := buildNetworkPolicy(agent)
+	networkPolicy := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputState{}))
 	if len(networkPolicy.Spec.Egress) != 5 {
 		t.Fatalf("expected 5 egress rules with additional ports, got %d", len(networkPolicy.Spec.Egress))
 	}
@@ -551,6 +551,47 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 		t.Fatalf("expected 1 deduplicated extra UDP port, got %+v", extraUDPRule.Ports)
 	}
 	requireNetworkPolicyPort(t, extraUDPRule.Ports, corev1.ProtocolUDP, 3478)
+}
+
+func TestEffectiveTerminalBackendUsesInlineConfigOverSpec(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n"
+
+	backend := effectiveTerminalBackend(agent, referencedInputState{})
+	if backend != "ssh" {
+		t.Fatalf("expected inline config terminal backend ssh, got %q", backend)
+	}
+}
+
+func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
+		Key:                  "config.yaml",
+	}
+	referencedInputs := referencedInputState{
+		FileRefs: []referencedObjectSnapshot{
+			newConfigMapFileSnapshot("shared-config", "config.yaml", &corev1.ConfigMap{Data: map[string]string{"config.yaml": "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n"}}),
+		},
+	}
+
+	backend := effectiveTerminalBackend(agent, referencedInputs)
+	if backend != "ssh" {
+		t.Fatalf("expected referenced config terminal backend ssh, got %q", backend)
+	}
+}
+
+func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Spec.Terminal.Backend = "ssh"
+	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
+
+	backend := effectiveTerminalBackend(agent, referencedInputState{})
+	if backend != "ssh" {
+		t.Fatalf("expected fallback terminal backend ssh, got %q", backend)
+	}
 }
 
 func TestAdditionalNetworkPolicyPortsDeduplicatesAndSortsPorts(t *testing.T) {

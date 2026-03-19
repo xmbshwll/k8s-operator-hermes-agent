@@ -26,7 +26,7 @@ Scope: namespaced
 | `spec.envFrom` | array | no | empty | Import env from `ConfigMap` or `Secret` |
 | `spec.secretRefs` | array | no | empty | Mount named secrets under `/var/run/hermes/secrets/<name>` |
 | `spec.storage` | object | no | persistence enabled | Hermes state storage settings |
-| `spec.terminal` | object | no | `backend: local` | Terminal backend selection |
+| `spec.terminal` | object | no | `backend: local` | Fallback terminal backend for operator wiring |
 | `spec.resources` | object | no | empty | Standard Kubernetes resource requests and limits |
 | `spec.probes` | object | no | profile-specific defaults | Startup, readiness, and liveness behavior |
 | `spec.service` | object | no | disabled | Optional Service creation |
@@ -130,16 +130,17 @@ Supported values:
 - `local`
 - `ssh`
 
-`spec.terminal.backend` is operator-side wiring, not a second runtime entrypoint. The operator uses it for Kubernetes behavior such as generated egress rules.
-Your Hermes runtime image still reads its terminal backend from `config.yaml`, so keep `spec.terminal.backend` and `spec.config.raw.terminal.backend` aligned.
+`config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`.
+The operator derives Kubernetes-side behavior such as generated SSH egress rules from the resolved config content for both inline and referenced `configMapRef` inputs.
+`spec.terminal.backend` is only a fallback for cases where `config.yaml` does not declare a backend.
 
 When `backend: ssh` is used:
-- set `spec.terminal.backend: ssh`
 - set `terminal.backend: ssh` in Hermes `config.yaml`
 - provide the SSH env and mounted secret material your runtime image expects
+- optionally keep `spec.terminal.backend: ssh` as an explicit fallback/default, although the resolved config still wins
 
 When inline `spec.config.raw` is used, the webhook rejects explicit terminal backend mismatches.
-When `config.yaml` comes from `configMapRef`, the operator cannot inspect it at admission time, so you must keep the referenced config aligned yourself.
+When `config.yaml` comes from `configMapRef`, the controller derives the effective backend during reconcile from the referenced ConfigMap content.
 
 ## Probes
 

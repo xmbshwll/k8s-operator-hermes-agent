@@ -163,7 +163,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
+	if err := r.reconcileNetworkPolicy(ctx, agent, referencedInputs); err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			markWorkloadFailure(status, "NetworkPolicyReconcileFailed", err.Error(), "Hermes NetworkPolicy could not be reconciled")
 		}); statusErr != nil {
@@ -471,7 +471,7 @@ func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *her
 	return err
 }
 
-func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) error {
 	networkPolicy := &networkingv1.NetworkPolicy{}
 	networkPolicyKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
 	networkPolicyExists := true
@@ -493,7 +493,7 @@ func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agen
 		return fmt.Errorf("networkpolicy %s already exists and is not owned by HermesAgent %s", networkPolicy.Name, agent.Name)
 	}
 
-	desired := buildNetworkPolicy(agent)
+	desired := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputs))
 	networkPolicy.Namespace = desired.Namespace
 	networkPolicy.Name = desired.Name
 

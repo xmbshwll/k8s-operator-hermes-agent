@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"sigs.k8s.io/yaml"
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
@@ -243,7 +244,7 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 	}
 }
 
-func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent) *networkingv1.NetworkPolicy {
+func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend string) *networkingv1.NetworkPolicy {
 	labels := resourceLabels(agent)
 	egress := []networkingv1.NetworkPolicyEgressRule{
 		networkPolicyRule(
@@ -254,7 +255,7 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent) *networkingv1.Network
 
 	defaultTCPPorts := networkPolicyPortSet(networkPolicyDNSPort, networkPolicyHTTPPort, networkPolicyHTTPSPort)
 	defaultUDPPorts := networkPolicyPortSet(networkPolicyDNSPort)
-	if terminalBackend(agent) == "ssh" {
+	if terminalBackend == "ssh" {
 		defaultTCPPorts[networkPolicySSHPort] = struct{}{}
 		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicySSHPort})...))
 	}
@@ -708,11 +709,50 @@ func shellQuote(value string) string {
 	return fmt.Sprintf("%q", value)
 }
 
-func terminalBackend(agent *hermesv1alpha1.HermesAgent) string {
+func effectiveTerminalBackend(agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) string {
+	if backend, ok := configSourceTerminalBackend(agent.Spec.Config, referencedInputs); ok {
+		return backend
+	}
 	if agent.Spec.Terminal.Backend == "" {
 		return "local"
 	}
 	return agent.Spec.Terminal.Backend
+}
+
+func configSourceTerminalBackend(source hermesv1alpha1.HermesAgentConfigSource, referencedInputs referencedInputState) (string, bool) {
+	if source.Raw != "" {
+		return terminalBackendFromConfigContent(source.Raw)
+	}
+	if source.ConfigMapRef == nil || source.ConfigMapRef.Name == "" || source.ConfigMapRef.Key == "" {
+		return "", false
+	}
+
+	for _, snapshot := range referencedInputs.FileRefs {
+		if snapshot.Kind != "ConfigMap" || snapshot.Name != source.ConfigMapRef.Name || snapshot.Key != source.ConfigMapRef.Key {
+			continue
+		}
+		if !snapshot.Present || !snapshot.KeyFound {
+			return "", false
+		}
+		return terminalBackendFromConfigContent(snapshot.Data[source.ConfigMapRef.Key])
+	}
+	return "", false
+}
+
+func terminalBackendFromConfigContent(content string) (string, bool) {
+	var config struct {
+		Terminal struct {
+			Backend string `yaml:"backend"`
+		} `yaml:"terminal"`
+	}
+
+	if err := yaml.Unmarshal([]byte(content), &config); err != nil {
+		return "", false
+	}
+	if config.Terminal.Backend == "" {
+		return "", false
+	}
+	return config.Terminal.Backend, true
 }
 
 func additionalNetworkPolicyPorts(ports []int32, existing map[int32]struct{}) []int32 {

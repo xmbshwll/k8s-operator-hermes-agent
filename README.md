@@ -216,7 +216,7 @@ Environment and secrets are handled separately:
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
 - `spec.secretRefs` mounts named secrets under `/var/run/hermes/secrets/`, which is the supported file-bundle path for things like SSH material and plugin bundles
 
-`spec.terminal.backend` controls operator-side terminal wiring such as generated SSH egress rules. Hermes itself still reads the terminal backend from `config.yaml`, so keep those values aligned.
+`config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`. The controller derives operator-side wiring such as generated SSH egress rules from the resolved config content and only falls back to `spec.terminal.backend` when the config omits a backend.
 
 Referenced `ConfigMap` and `Secret` content is part of the pod template hash.
 That means changes to `spec.config.configMapRef`, `spec.gatewayConfig.configMapRef`, `spec.env[].valueFrom`, `spec.envFrom`, and `spec.secretRefs` roll the Hermes pod deterministically instead of relying on live volume refresh behavior.
