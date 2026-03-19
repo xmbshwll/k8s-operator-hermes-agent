@@ -688,9 +688,19 @@ func renderSampleManifest(relativePath string) (string, error) {
 		return "", err
 	}
 
-	rendered := strings.Replace(string(content), "repository: ghcr.io/example/hermes-agent", fmt.Sprintf("repository: %s", hermesRuntimeImage), 1)
-	rendered = strings.Replace(rendered, "tag: gateway-core", "tag: v0.0.1", 1)
+	repository, tag := splitImageReference(hermesRuntimeImage)
+	rendered := strings.Replace(string(content), "repository: ghcr.io/xmbshwll/hermes-agent-docker", fmt.Sprintf("repository: %s", repository), 1)
+	rendered = strings.Replace(rendered, "tag: latest", fmt.Sprintf("tag: %s", tag), 1)
 	return renderManifest(rendered)
+}
+
+func splitImageReference(image string) (string, string) {
+	lastSlash := strings.LastIndex(image, "/")
+	lastColon := strings.LastIndex(image, ":")
+	if lastColon <= lastSlash {
+		return image, "latest"
+	}
+	return image[:lastColon], image[lastColon+1:]
 }
 
 func renderManifest(content string) (string, error) {
