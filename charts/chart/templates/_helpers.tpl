@@ -60,3 +60,22 @@ Service account name for the controller manager.
 {{- required "serviceAccount.name must be set when serviceAccount.create=false" .Values.serviceAccount.name | trunc 63 | trimSuffix "-" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Shared labels for controller-manager resources.
+*/}}
+{{- define "k8s-operator-hermes-agent.controllerManagerLabels" -}}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+control-plane: controller-manager
+{{- end }}
+
+{{/*
+Label selector for controller-manager pods.
+*/}}
+{{- define "k8s-operator-hermes-agent.controllerManagerSelectorLabels" -}}
+app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
+control-plane: controller-manager
+{{- end }}

@@ -3,17 +3,13 @@ apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   labels:
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+    {{- include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 4 }}
   name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "allow-metrics-traffic" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-      control-plane: controller-manager
+      {{- include "k8s-operator-hermes-agent.controllerManagerSelectorLabels" . | nindent 6 }}
   policyTypes:
     - Ingress
   ingress:

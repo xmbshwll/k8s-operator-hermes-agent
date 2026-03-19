@@ -3,11 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    control-plane: controller-manager
+    {{- include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 4 }}
     {{- with .Values.metrics.service.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -24,6 +20,5 @@ spec:
     protocol: TCP
     targetPort: 8443
   selector:
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    control-plane: controller-manager
+    {{- include "k8s-operator-hermes-agent.controllerManagerSelectorLabels" . | nindent 4 }}
 {{- end }}

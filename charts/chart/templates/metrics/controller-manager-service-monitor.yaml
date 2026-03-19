@@ -3,11 +3,7 @@ apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   labels:
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    control-plane: controller-manager
+    {{- include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 4 }}
     {{- with .Values.metrics.serviceMonitor.additionalLabels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
@@ -32,7 +28,6 @@ spec:
       {{- end }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
+      {{- include "k8s-operator-hermes-agent.controllerManagerSelectorLabels" . | nindent 6 }}
       app.kubernetes.io/instance: {{ .Release.Name }}
-      control-plane: controller-manager
 {{- end }}
