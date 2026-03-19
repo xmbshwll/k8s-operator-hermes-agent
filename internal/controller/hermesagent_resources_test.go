@@ -510,6 +510,33 @@ func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
 	requireNetworkPolicyPort(t, sshRule.Ports, corev1.ProtocolTCP, networkPolicySSHPort)
 }
 
+func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+	agent.Spec.Terminal.Backend = "ssh"
+	agent.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443, networkPolicyHTTPSPort, 8081, networkPolicySSHPort}
+	agent.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478, networkPolicyDNSPort}
+
+	networkPolicy := buildNetworkPolicy(agent)
+	if len(networkPolicy.Spec.Egress) != 5 {
+		t.Fatalf("expected 5 egress rules with additional ports, got %d", len(networkPolicy.Spec.Egress))
+	}
+
+	extraTCPRule := networkPolicy.Spec.Egress[3]
+	if len(extraTCPRule.Ports) != 2 {
+		t.Fatalf("expected 2 deduplicated extra TCP ports, got %+v", extraTCPRule.Ports)
+	}
+	requireNetworkPolicyPort(t, extraTCPRule.Ports, corev1.ProtocolTCP, 8081)
+	requireNetworkPolicyPort(t, extraTCPRule.Ports, corev1.ProtocolTCP, 8443)
+
+	extraUDPRule := networkPolicy.Spec.Egress[4]
+	if len(extraUDPRule.Ports) != 1 {
+		t.Fatalf("expected 1 deduplicated extra UDP port, got %+v", extraUDPRule.Ports)
+	}
+	requireNetworkPolicyPort(t, extraUDPRule.Ports, corev1.ProtocolUDP, 3478)
+}
+
 func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName

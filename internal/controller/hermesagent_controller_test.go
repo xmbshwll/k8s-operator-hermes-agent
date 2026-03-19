@@ -922,9 +922,13 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:        hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Terminal:      hermesv1alpha1.HermesAgentTerminalSpec{Backend: "ssh"},
-			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
+			Config:   hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Terminal: hermesv1alpha1.HermesAgentTerminalSpec{Backend: "ssh"},
+			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{
+				Enabled:            &enabled,
+				AdditionalTCPPorts: []int32{8443},
+				AdditionalUDPPorts: []int32{3478},
+			},
 		},
 	}
 
@@ -953,9 +957,11 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	if len(networkPolicy.Spec.PolicyTypes) != 1 || networkPolicy.Spec.PolicyTypes[0] != networkingv1.PolicyTypeEgress {
 		t.Fatalf("expected egress-only NetworkPolicy, got %+v", networkPolicy.Spec.PolicyTypes)
 	}
-	if len(networkPolicy.Spec.Egress) != 3 {
-		t.Fatalf("expected ssh-enabled NetworkPolicy to include 3 egress rules, got %d", len(networkPolicy.Spec.Egress))
+	if len(networkPolicy.Spec.Egress) != 5 {
+		t.Fatalf("expected ssh-enabled NetworkPolicy with additional ports to include 5 egress rules, got %d", len(networkPolicy.Spec.Egress))
 	}
+	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[3].Ports, corev1.ProtocolTCP, 8443)
+	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[4].Ports, corev1.ProtocolUDP, 3478)
 
 	updatedAgent := &hermesv1alpha1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {

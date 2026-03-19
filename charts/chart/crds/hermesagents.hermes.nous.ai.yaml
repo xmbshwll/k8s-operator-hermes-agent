@@ -349,6 +349,22 @@ spec:
                   enabled: false
                 description: networkPolicy controls optional NetworkPolicy generation.
                 properties:
+                  additionalTCPPorts:
+                    description: |-
+                      additionalTCPPorts adds extra TCP egress ports to the generated policy.
+                      Use this when your Hermes workflow needs outbound TCP beyond the default DNS, HTTP, HTTPS, and optional SSH rules.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
+                  additionalUDPPorts:
+                    description: |-
+                      additionalUDPPorts adds extra UDP egress ports to the generated policy.
+                      Use this when your Hermes workflow needs outbound UDP beyond the default DNS rule.
+                    items:
+                      format: int32
+                      type: integer
+                    type: array
                   enabled:
                     description: enabled controls whether an egress-focused NetworkPolicy
                       is created.

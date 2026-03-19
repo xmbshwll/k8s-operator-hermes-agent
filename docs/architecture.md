@@ -141,7 +141,7 @@ The default policy shape allows:
 
 That SSH rule comes from the CR field, not by parsing Hermes config. Keep `spec.terminal.backend` aligned with the backend configured in `config.yaml`, or the operator can wire Kubernetes resources for the wrong terminal mode.
 
-The policy is deliberately narrow and aligned with the MVP workload shape.
+Users can widen the generated policy with additional TCP and UDP egress ports while keeping the same simple port-only shape. If they need destination-aware rules or a substantially different policy, the intended path is to disable operator-managed NetworkPolicy generation and supply their own manifest.
 
 ## Security defaults
 

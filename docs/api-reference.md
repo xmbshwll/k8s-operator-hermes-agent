@@ -199,6 +199,10 @@ This is the supported exposure path for HTTP-oriented deployment stories such as
 spec:
   networkPolicy:
     enabled: true
+    additionalTCPPorts:
+      - 8443
+    additionalUDPPorts:
+      - 3478
 ```
 
 When enabled, the operator creates an egress-focused NetworkPolicy for the Hermes pod.
@@ -207,6 +211,18 @@ The default policy allows:
 - HTTP
 - HTTPS
 - SSH when `terminal.backend: ssh`
+
+You can widen the generated policy with:
+- `additionalTCPPorts` for extra outbound TCP ports
+- `additionalUDPPorts` for extra outbound UDP ports
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Whether the operator creates the NetworkPolicy |
+| `additionalTCPPorts` | array | empty | Extra outbound TCP ports added to the generated policy |
+| `additionalUDPPorts` | array | empty | Extra outbound UDP ports added to the generated policy |
+
+The generated policy still allows egress by port only, to any destination. If you need destination-specific rules or a substantially different policy shape, disable `spec.networkPolicy.enabled` and manage your own NetworkPolicy instead.
 
 As with Service management, a same-name non-owned NetworkPolicy causes reconciliation to fail.
 
@@ -237,6 +253,7 @@ The webhook currently rejects:
 - incomplete `env`, `envFrom`, or `secretRefs` references
 - invalid storage sizes
 - invalid enabled Service ports
+- invalid additional NetworkPolicy ports
 
 It also defaults:
 - mode

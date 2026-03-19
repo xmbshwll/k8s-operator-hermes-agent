@@ -130,6 +130,22 @@ Fix:
 - delete or rename the conflicting object
 - or disable the optional `spec.service.enabled` / `spec.networkPolicy.enabled`
 
+### Generated NetworkPolicy is too narrow
+
+Symptoms:
+- Hermes starts but outbound calls to a non-default port fail
+- the generated `NetworkPolicy` exists and egress works only for DNS, HTTP, HTTPS, and optional SSH
+
+Check:
+
+```sh
+kubectl get networkpolicy <name> -n <namespace> -o yaml
+```
+
+Fix:
+- add `spec.networkPolicy.additionalTCPPorts` or `spec.networkPolicy.additionalUDPPorts` for the missing ports
+- or disable `spec.networkPolicy.enabled` and manage your own NetworkPolicy when you need destination-specific rules or a substantially different policy shape
+
 ## Useful follow-up commands
 
 ```sh

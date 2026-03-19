@@ -146,6 +146,16 @@ type HermesAgentServiceSpec struct {
 type HermesAgentNetworkPolicySpec struct {
 	// enabled controls whether an egress-focused NetworkPolicy is created.
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// additionalTCPPorts adds extra TCP egress ports to the generated policy.
+	// Use this when your Hermes workflow needs outbound TCP beyond the default DNS, HTTP, HTTPS, and optional SSH rules.
+	// +optional
+	AdditionalTCPPorts []int32 `json:"additionalTCPPorts,omitempty"`
+
+	// additionalUDPPorts adds extra UDP egress ports to the generated policy.
+	// Use this when your Hermes workflow needs outbound UDP beyond the default DNS rule.
+	// +optional
+	AdditionalUDPPorts []int32 `json:"additionalUDPPorts,omitempty"`
 }
 
 // HermesAgentSpec defines the desired state of HermesAgent.

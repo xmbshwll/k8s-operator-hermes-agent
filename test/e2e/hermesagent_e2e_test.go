@@ -632,6 +632,10 @@ spec:
     port: 8080
   networkPolicy:
     enabled: true
+    additionalTCPPorts:
+      - 8443
+    additionalUDPPorts:
+      - 3478
 `, name, hermesAgentNamespace, hermesRuntimeImage))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
@@ -649,6 +653,14 @@ spec:
 			g.Expect(err).NotTo(HaveOccurred())
 			_, err = kubectl("get", "networkpolicy", name, "-n", hermesAgentNamespace)
 			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("verifying the generated NetworkPolicy includes additional configured ports")
+		Eventually(func(g Gomega) {
+			output, err := kubectl("get", "networkpolicy", name, "-n", hermesAgentNamespace, "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).To(ContainSubstring("port: 8443"))
+			g.Expect(output).To(ContainSubstring("port: 3478"))
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
 		By("disabling the optional resources")

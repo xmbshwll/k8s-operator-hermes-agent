@@ -190,6 +190,7 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 	allErrs = append(allErrs, validateEnvFrom(specPath.Child("envFrom"), obj.Spec.EnvFrom)...)
 	allErrs = append(allErrs, validateSecretRefs(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
 	allErrs = append(allErrs, validateService(specPath.Child("service"), obj.Spec.Service)...)
+	allErrs = append(allErrs, validateNetworkPolicy(specPath.Child("networkPolicy"), obj.Spec.NetworkPolicy)...)
 	allErrs = append(allErrs, validateStorage(specPath.Child("storage", "persistence"), obj.Spec.Storage.Persistence)...)
 	allErrs = append(allErrs, validateProbeSpec(specPath.Child("probes", "startup"), obj.Spec.Probes.Startup)...)
 	allErrs = append(allErrs, validateProbeSpec(specPath.Child("probes", "readiness"), obj.Spec.Probes.Readiness)...)
@@ -325,6 +326,23 @@ func validateService(path *field.Path, service hermesv1alpha1.HermesAgentService
 	allErrs := field.ErrorList{}
 	if service.Enabled && service.Port <= 0 {
 		allErrs = append(allErrs, field.Invalid(path.Child("port"), service.Port, "port must be greater than zero when service is enabled"))
+	}
+	return allErrs
+}
+
+func validateNetworkPolicy(path *field.Path, networkPolicy hermesv1alpha1.HermesAgentNetworkPolicySpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, validateNetworkPolicyPorts(path.Child("additionalTCPPorts"), networkPolicy.AdditionalTCPPorts)...)
+	allErrs = append(allErrs, validateNetworkPolicyPorts(path.Child("additionalUDPPorts"), networkPolicy.AdditionalUDPPorts)...)
+	return allErrs
+}
+
+func validateNetworkPolicyPorts(path *field.Path, ports []int32) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for i, port := range ports {
+		if port <= 0 || port > 65535 {
+			allErrs = append(allErrs, field.Invalid(path.Index(i), port, "must be between 1 and 65535"))
+		}
 	}
 	return allErrs
 }

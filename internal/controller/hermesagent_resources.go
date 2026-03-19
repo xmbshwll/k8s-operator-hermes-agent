@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
+	"sort"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -258,13 +259,30 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent) *networkingv1.Network
 			},
 		},
 	}
+
+	defaultTCPPorts := map[int32]struct{}{
+		networkPolicyDNSPort:   {},
+		networkPolicyHTTPPort:  {},
+		networkPolicyHTTPSPort: {},
+	}
+	defaultUDPPorts := map[int32]struct{}{
+		networkPolicyDNSPort: {},
+	}
 	if terminalBackend(agent) == "ssh" {
+		defaultTCPPorts[networkPolicySSHPort] = struct{}{}
 		egress = append(egress, networkingv1.NetworkPolicyEgressRule{
 			Ports: []networkingv1.NetworkPolicyPort{{
 				Protocol: protocolPtr(corev1.ProtocolTCP),
 				Port:     portIntOrString(networkPolicySSHPort),
 			}},
 		})
+	}
+
+	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalTCPPorts, defaultTCPPorts); len(ports) > 0 {
+		egress = append(egress, networkingv1.NetworkPolicyEgressRule{Ports: networkPolicyPorts(corev1.ProtocolTCP, ports)})
+	}
+	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalUDPPorts, defaultUDPPorts); len(ports) > 0 {
+		egress = append(egress, networkingv1.NetworkPolicyEgressRule{Ports: networkPolicyPorts(corev1.ProtocolUDP, ports)})
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -714,6 +732,34 @@ func terminalBackend(agent *hermesv1alpha1.HermesAgent) string {
 		return "local"
 	}
 	return agent.Spec.Terminal.Backend
+}
+
+func additionalNetworkPolicyPorts(ports []int32, existing map[int32]struct{}) []int32 {
+	unique := map[int32]struct{}{}
+	for _, port := range ports {
+		if _, ok := existing[port]; ok {
+			continue
+		}
+		unique[port] = struct{}{}
+	}
+
+	ordered := make([]int32, 0, len(unique))
+	for port := range unique {
+		ordered = append(ordered, port)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	return ordered
+}
+
+func networkPolicyPorts(protocol corev1.Protocol, ports []int32) []networkingv1.NetworkPolicyPort {
+	policyPorts := make([]networkingv1.NetworkPolicyPort, 0, len(ports))
+	for _, port := range ports {
+		policyPorts = append(policyPorts, networkingv1.NetworkPolicyPort{
+			Protocol: protocolPtr(protocol),
+			Port:     portIntOrString(port),
+		})
+	}
+	return policyPorts
 }
 
 func protocolPtr(protocol corev1.Protocol) *corev1.Protocol {
