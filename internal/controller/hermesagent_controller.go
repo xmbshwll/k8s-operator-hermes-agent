@@ -48,6 +48,7 @@ const (
 	phaseWorkloadPending          = "WorkloadPending"
 	phaseWorkloadError            = "WorkloadError"
 	phaseReady                    = "Ready"
+	reasonWaitingForPersistence   = "WaitingForPersistence"
 )
 
 // HermesAgentReconciler reconciles a HermesAgent object.
@@ -152,7 +153,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			status.PersistenceBound = false
 			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 			setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", err.Error())
-			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "WaitingForPersistence", "Workload is waiting for the Hermes PVC to reconcile")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, reasonWaitingForPersistence, "Workload is waiting for the Hermes PVC to reconcile")
 			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", "Hermes persistence could not be reconciled")
 			status.Phase = phaseStorageError
 		}); statusErr != nil {
@@ -578,7 +579,7 @@ func statusEventsForTransition(before, after *hermesv1alpha1.HermesAgentStatus) 
 		persistenceChanged = true
 	}
 	if event := eventForConditionTransition(before, after, conditionTypeWorkloadReady); event.ok && event.reason != "Unknown" {
-		if !(persistenceChanged && event.reason == "WaitingForPersistence") {
+		if !persistenceChanged || event.reason != reasonWaitingForPersistence {
 			events = append(events, event)
 		}
 	}
@@ -706,7 +707,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 				view.persistenceReason = "PersistentVolumeClaimMissing"
 				view.persistenceMessage = fmt.Sprintf("PersistentVolumeClaim %s has not been created yet; inspect reconcile errors and storage settings", pvcKey.Name)
 				view.workloadConditionStatus = metav1.ConditionFalse
-				view.workloadReason = "WaitingForPersistence"
+				view.workloadReason = reasonWaitingForPersistence
 				view.workloadMessage = "Workload is waiting for the Hermes PVC to be created and bound"
 				view.readyConditionStatus = metav1.ConditionFalse
 				view.readyReason = view.persistenceReason
@@ -727,7 +728,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 			view.persistenceReason = persistenceReason(persistentVolumeClaim.Status.Phase)
 			view.persistenceMessage = persistenceMessage(persistentVolumeClaim)
 			view.workloadConditionStatus = metav1.ConditionFalse
-			view.workloadReason = "WaitingForPersistence"
+			view.workloadReason = reasonWaitingForPersistence
 			view.workloadMessage = "Workload is waiting for the Hermes PVC to bind"
 			view.readyConditionStatus = metav1.ConditionFalse
 			view.readyReason = view.persistenceReason
