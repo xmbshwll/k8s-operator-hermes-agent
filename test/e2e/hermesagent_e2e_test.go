@@ -5,6 +5,8 @@ package e2e
 
 import (
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -136,7 +138,7 @@ spec:
     - name: HERMES_E2E_PLATFORM
       value: telegram
     - name: HERMES_E2E_CONNECTED_DELAY_SECONDS
-      value: "20"
+      value: "10"
   probes:
     startup:
       enabled: true
@@ -179,7 +181,7 @@ spec:
 			status, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(strings.TrimSpace(status)).NotTo(Equal("True"))
-		}, 8*time.Second, time.Second).Should(Succeed())
+		}, 9*time.Second, time.Second).Should(Succeed())
 
 		By("waiting for the fake runtime to flip the platform to connected")
 		Eventually(func(g Gomega) {
@@ -191,6 +193,120 @@ spec:
 		By("verifying the pod and HermesAgent become ready after the connection appears")
 		waitForPodReady(podName)
 		waitForAgentPhase(name, "Ready")
+	})
+
+	It("serves runtime state through the optional Service when HTTP is enabled", func() {
+		name := "hermesagent-http-service"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  env:
+    - name: HERMES_E2E_HTTP_PORT
+      value: "8080"
+  service:
+    enabled: true
+    port: 8080
+`, name, hermesAgentNamespace, hermesRuntimeImage))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+
+		stopPortForward := startServicePortForward(name, 18080, 8080)
+		defer stopPortForward()
+
+		Eventually(func(g Gomega) {
+			response, err := http.Get("http://127.0.0.1:18080/")
+			g.Expect(err).NotTo(HaveOccurred())
+			defer response.Body.Close()
+
+			body, err := io.ReadAll(response.Body)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(response.StatusCode).To(Equal(http.StatusOK))
+			g.Expect(string(body)).To(ContainSubstring("gateway_state=running"))
+			g.Expect(string(body)).To(ContainSubstring("path=/data/hermes/gateway_state.json"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+	})
+
+	It("writes an observed-path report for mounted runtime inputs", func() {
+		name := "hermesagent-observed-paths"
+		pluginSecretName := "hermesagent-plugin-bundle"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+stringData:
+  plugin.py: |
+    def register():
+      return "plugin-ready"
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  env:
+    - name: HERMES_E2E_OBSERVED_PATHS
+      value: /var/run/hermes/secrets/%s
+  secretRefs:
+    - name: %s
+`, pluginSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, pluginSecretName, pluginSecretName))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+
+		podName := statefulSetPodName(name)
+		Eventually(func(g Gomega) {
+			report, err := readObservedReport(podName)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(report).To(ContainSubstring("path=/data/hermes/config.yaml"))
+			g.Expect(report).To(ContainSubstring("path=/data/hermes/gateway.json"))
+			g.Expect(report).To(ContainSubstring("path=/var/run/hermes/secrets/hermesagent-plugin-bundle"))
+			g.Expect(report).To(ContainSubstring("child=/var/run/hermes/secrets/hermesagent-plugin-bundle/plugin.py"))
+			g.Expect(report).To(ContainSubstring("plugin-ready"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
 	})
 
 	It("preserves Hermes state across a StatefulSet pod restart", func() {
@@ -595,6 +711,34 @@ func podUID(podName string) string {
 	uid, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
 	Expect(err).NotTo(HaveOccurred())
 	return strings.TrimSpace(uid)
+}
+
+func readObservedReport(podName string) (string, error) {
+	return kubectl("exec", "-n", hermesAgentNamespace, podName, "--", "cat", "/data/hermes/e2e-observed-paths.txt")
+}
+
+func startServicePortForward(serviceName string, localPort, remotePort int) func() {
+	cmd := exec.Command("kubectl", "port-forward", "-n", hermesAgentNamespace, fmt.Sprintf("service/%s", serviceName), fmt.Sprintf("%d:%d", localPort, remotePort))
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	Expect(cmd.Start()).To(Succeed())
+
+	Eventually(func() error {
+		response, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", localPort))
+		if err != nil {
+			return err
+		}
+		defer response.Body.Close()
+		return nil
+	}, 30*time.Second, 500*time.Millisecond).Should(Succeed())
+
+	return func() {
+		if cmd.Process == nil {
+			return
+		}
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}
 }
 
 func readBootCount(podName string) int {

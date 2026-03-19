@@ -18,9 +18,14 @@ boot_count_file="$HERMES_HOME/boot-count"
 pid_file="$HERMES_HOME/gateway.pid"
 state_file="$HERMES_HOME/gateway_state.json"
 config_file="$HERMES_HOME/config.yaml"
+gateway_config_file="$HERMES_HOME/gateway.json"
+observed_report_file="$HERMES_HOME/e2e-observed-paths.txt"
 platform_name="${HERMES_E2E_PLATFORM:-}"
 connected_delay_seconds="${HERMES_E2E_CONNECTED_DELAY_SECONDS:-0}"
+http_port="${HERMES_E2E_HTTP_PORT:-}"
+observed_paths_extra="${HERMES_E2E_OBSERVED_PATHS:-}"
 start_epoch="$(date +%s)"
+http_server_pid=""
 
 boot_count=0
 if [[ -f "$boot_count_file" ]]; then
@@ -32,6 +37,11 @@ printf '%s\n' "$boot_count" > "$boot_count_file"
 config_hash="missing"
 if [[ -f "$config_file" ]]; then
   config_hash="$(sha256sum "$config_file" | awk '{print $1}')"
+fi
+
+gateway_config_hash="missing"
+if [[ -f "$gateway_config_file" ]]; then
+  gateway_config_hash="$(sha256sum "$gateway_config_file" | awk '{print $1}')"
 fi
 
 json_timestamp() {
@@ -54,6 +64,43 @@ platform_state() {
   printf 'disconnected'
 }
 
+sha256_for_file() {
+  sha256sum "$1" | awk '{print $1}'
+}
+
+append_observed_entry() {
+  local target="$1"
+
+  if [[ ! -e "$target" ]]; then
+    printf 'path=%s\n' "$target" >> "$observed_report_file"
+    printf 'type=missing\n\n' >> "$observed_report_file"
+    return
+  fi
+
+  if [[ -d "$target" ]]; then
+    printf 'path=%s\n' "$target" >> "$observed_report_file"
+    printf 'type=directory\n' >> "$observed_report_file"
+    while IFS= read -r child; do
+      printf 'child=%s\n' "$child" >> "$observed_report_file"
+      if [[ -f "$child" ]]; then
+        printf 'child_sha256=%s\n' "$(sha256_for_file "$child")" >> "$observed_report_file"
+      fi
+    done < <(find "$target" -mindepth 1 -maxdepth 5 | LC_ALL=C sort)
+    printf '\n' >> "$observed_report_file"
+    return
+  fi
+
+  printf 'path=%s\n' "$target" >> "$observed_report_file"
+  printf 'type=file\n' >> "$observed_report_file"
+  printf 'sha256=%s\n' "$(sha256_for_file "$target")" >> "$observed_report_file"
+  printf 'content<<EOF\n' >> "$observed_report_file"
+  cat "$target" >> "$observed_report_file"
+  if [[ -s "$target" ]]; then
+    printf '\n' >> "$observed_report_file"
+  fi
+  printf 'EOF\n\n' >> "$observed_report_file"
+}
+
 write_pid_metadata() {
   cat > "$pid_file" <<JSON
 {"pid": $$, "kind": "hermes-gateway", "argv": ["hermes", "gateway"], "start_time": ${start_epoch}}
@@ -73,20 +120,83 @@ JSON
   fi
 
   cat > "$state_file" <<JSON
-{"pid": $$, "kind": "hermes-gateway", "argv": ["hermes", "gateway"], "start_time": ${start_epoch}, "gateway_state": "running", "exit_reason": null, "platforms": ${platform_payload}, "bootCount": ${boot_count}, "configHash": "${config_hash}", "updated_at": "${updated_at}"}
+{"pid": $$, "kind": "hermes-gateway", "argv": ["hermes", "gateway"], "start_time": ${start_epoch}, "gateway_state": "running", "exit_reason": null, "platforms": ${platform_payload}, "bootCount": ${boot_count}, "configHash": "${config_hash}", "gatewayConfigHash": "${gateway_config_hash}", "updated_at": "${updated_at}"}
 JSON
 }
 
+write_observed_report() {
+  local updated_at current_platform_state observed_paths combined_paths entry
+  updated_at="$(json_timestamp)"
+  current_platform_state="absent"
+  if [[ -n "$platform_name" ]]; then
+    current_platform_state="$(platform_state)"
+  fi
+
+  cat > "$observed_report_file" <<REPORT
+updated_at=${updated_at}
+boot_count=${boot_count}
+gateway_state=running
+platform_name=${platform_name}
+platform_state=${current_platform_state}
+config_hash=${config_hash}
+gateway_config_hash=${gateway_config_hash}
+REPORT
+
+  combined_paths="${config_file}:${gateway_config_file}:${state_file}:${pid_file}"
+  if [[ -n "$observed_paths_extra" ]]; then
+    combined_paths="${combined_paths}:${observed_paths_extra}"
+  fi
+
+  IFS=':' read -r -a observed_paths <<< "$combined_paths"
+  for entry in "${observed_paths[@]}"; do
+    if [[ -n "$entry" ]]; then
+      append_observed_entry "$entry"
+    fi
+  done
+}
+
+serve_http() {
+  while true; do
+    local body
+    body="$(cat "$observed_report_file" 2>/dev/null || true)"
+    {
+      printf 'HTTP/1.1 200 OK\r\n'
+      printf 'Content-Type: text/plain; charset=utf-8\r\n'
+      printf 'Content-Length: %s\r\n' "${#body}"
+      printf 'Connection: close\r\n\r\n'
+      printf '%s' "$body"
+    } | nc -l "$http_port"
+  done
+}
+
+start_http_server() {
+  if [[ -z "$http_port" ]]; then
+    return
+  fi
+
+  serve_http &
+  http_server_pid="$!"
+}
+
+refresh_runtime_state() {
+  write_pid_metadata
+  write_state
+  write_observed_report
+}
+
 cleanup() {
+  if [[ -n "$http_server_pid" ]]; then
+    kill "$http_server_pid" 2>/dev/null || true
+    wait "$http_server_pid" 2>/dev/null || true
+  fi
   rm -f "$pid_file"
   exit 0
 }
 trap cleanup TERM INT
 
-write_pid_metadata
-write_state
+refresh_runtime_state
+start_http_server
 while true; do
-  write_pid_metadata
-  write_state
+  refresh_runtime_state
   sleep 2
 done
