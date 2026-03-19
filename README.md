@@ -179,6 +179,14 @@ Watch the managed pod:
 kubectl get pods -w
 ```
 
+For day-2 debugging, start with:
+
+```sh
+kubectl describe hermesagent <name>
+```
+
+The operator emits focused events for invalid config, missing refs, PVC state changes, rollout progress, readiness, and same-name Service or NetworkPolicy conflicts.
+
 ## Configuration model
 
 A `HermesAgent` supports two config files:
@@ -286,6 +294,7 @@ make package-chart \
 ## Documentation
 
 - [Architecture notes](docs/architecture.md)
+- [Troubleshooting guide](docs/troubleshooting.md)
 - [Release workflow](docs/release.md)
 - [Sample catalog](config/samples/README.md)
 - [Minimal HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)

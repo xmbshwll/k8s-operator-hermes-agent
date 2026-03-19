@@ -27,6 +27,7 @@ import (
 	api "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -52,7 +53,8 @@ const (
 // HermesAgentReconciler reconciles a HermesAgent object.
 type HermesAgentReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
 }
 
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents,verbs=get;list;watch;create;update;patch;delete
@@ -60,6 +62,8 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups=hermes.nous.ai,resources=hermesagents/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
@@ -79,15 +83,31 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
 			status.PersistenceBound = false
-			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", err.Error())
-			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is valid")
-			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is valid")
-			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", "HermesAgent referenced inputs could not be read")
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", fmt.Sprintf("Could not read referenced ConfigMaps or Secrets: %v", err))
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence state is unknown until configuration inputs resolve successfully")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload state is unknown until configuration inputs resolve successfully")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ReferencedInputsReadFailed", "Referenced configuration inputs could not be read")
 			status.Phase = phaseConfigError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("read referenced inputs: %w (status update failed: %v)", err, statusErr)
 		}
 		return ctrl.Result{}, err
+	}
+
+	if missingMessages := missingReferenceMessages(referencedInputs); len(missingMessages) > 0 {
+		message := joinMessages(missingMessages)
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			status.ReadyReplicas = 0
+			status.PersistenceBound = false
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "MissingReferencedInput", message)
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence state is unknown until referenced configuration inputs are present")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload state is unknown until referenced configuration inputs are present")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "MissingReferencedInput", "Referenced configuration inputs are missing")
+			status.Phase = phaseConfigError
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("missing referenced inputs: %s (status update failed: %v)", message, statusErr)
+		}
+		return ctrl.Result{}, nil
 	}
 
 	plan, err := buildConfigPlanWithReferences(agent, referencedInputs)
@@ -96,8 +116,8 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			status.ReadyReplicas = 0
 			status.PersistenceBound = false
 			setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "InvalidConfig", err.Error())
-			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is valid")
-			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is valid")
+			setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence state is unknown until configuration inputs resolve successfully")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload state is unknown until configuration inputs resolve successfully")
 			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "InvalidConfig", "HermesAgent configuration is invalid")
 			status.Phase = phaseConfigError
 		}); statusErr != nil {
@@ -115,9 +135,9 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				status.ReadyReplicas = 0
 				status.PersistenceBound = false
 				setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
-				setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence status is unknown until config is reconciled")
-				setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload status is unknown until config is reconciled")
-				setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ConfigMapReconcileFailed", "HermesAgent configuration resources could not be reconciled")
+				setCondition(status, conditionTypePersistenceReady, metav1.ConditionUnknown, "Unknown", "Persistence state is unknown until inline configuration ConfigMaps reconcile")
+				setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "Unknown", "Workload state is unknown until inline configuration ConfigMaps reconcile")
+				setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ConfigMapReconcileFailed", "Inline configuration resources could not be reconciled")
 				status.Phase = phaseConfigError
 			}); statusErr != nil {
 				return ctrl.Result{}, fmt.Errorf("reconcile configmap: %w (status update failed: %v)", err, statusErr)
@@ -130,10 +150,10 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
 			status.PersistenceBound = false
-			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 			setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", err.Error())
-			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "WaitingForPersistence", "Workload is waiting for persistence to reconcile")
-			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", "HermesAgent persistence could not be reconciled")
+			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "WaitingForPersistence", "Workload is waiting for the Hermes PVC to reconcile")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", "Hermes persistence could not be reconciled")
 			status.Phase = phaseStorageError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("reconcile pvc: %w (status update failed: %v)", err, statusErr)
@@ -145,9 +165,9 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
-			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "StatefulSetReconcileFailed", err.Error())
-			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "StatefulSetReconcileFailed", "HermesAgent workload could not be reconciled")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "StatefulSetReconcileFailed", "Hermes workload could not be reconciled")
 			status.Phase = phaseWorkloadError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("reconcile statefulset: %w (status update failed: %v)", err, statusErr)
@@ -158,9 +178,9 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.reconcileService(ctx, agent); err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
-			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "ServiceReconcileFailed", err.Error())
-			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ServiceReconcileFailed", "HermesAgent service could not be reconciled")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "ServiceReconcileFailed", "Hermes Service could not be reconciled")
 			status.Phase = phaseWorkloadError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("reconcile service: %w (status update failed: %v)", err, statusErr)
@@ -171,9 +191,9 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if err := r.reconcileNetworkPolicy(ctx, agent); err != nil {
 		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 			status.ReadyReplicas = 0
-			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+			setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 			setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, "NetworkPolicyReconcileFailed", err.Error())
-			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "NetworkPolicyReconcileFailed", "HermesAgent network policy could not be reconciled")
+			setCondition(status, conditionTypeReady, metav1.ConditionFalse, "NetworkPolicyReconcileFailed", "Hermes NetworkPolicy could not be reconciled")
 			status.Phase = phaseWorkloadError
 		}); statusErr != nil {
 			return ctrl.Result{}, fmt.Errorf("reconcile networkpolicy: %w (status update failed: %v)", err, statusErr)
@@ -529,7 +549,117 @@ func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1
 	now := metav1.Now()
 	latest.Status.LastReconcileTime = &now
 
-	return r.Status().Patch(ctx, latest, client.MergeFrom(base))
+	if err := r.Status().Patch(ctx, latest, client.MergeFrom(base)); err != nil {
+		return err
+	}
+
+	r.emitStatusEvent(latest, &base.Status, &latest.Status)
+	return nil
+}
+
+func (r *HermesAgentReconciler) emitStatusEvent(agent *hermesv1alpha1.HermesAgent, before, after *hermesv1alpha1.HermesAgentStatus) {
+	if r.Recorder == nil {
+		return
+	}
+
+	for _, event := range statusEventsForTransition(before, after) {
+		r.Recorder.Event(agent, event.eventType, event.reason, event.message)
+	}
+}
+
+func statusEventsForTransition(before, after *hermesv1alpha1.HermesAgentStatus) []statusEvent {
+	events := []statusEvent{}
+	persistenceChanged := false
+	if event := eventForConditionTransition(before, after, conditionTypeConfigReady); event.ok && event.eventType == corev1.EventTypeWarning {
+		events = append(events, event)
+	}
+	if event := eventForConditionTransition(before, after, conditionTypePersistenceReady); event.ok && event.reason != "Unknown" {
+		events = append(events, event)
+		persistenceChanged = true
+	}
+	if event := eventForConditionTransition(before, after, conditionTypeWorkloadReady); event.ok && event.reason != "Unknown" {
+		if !(persistenceChanged && event.reason == "WaitingForPersistence") {
+			events = append(events, event)
+		}
+	}
+	return events
+}
+
+type statusEvent struct {
+	eventType string
+	reason    string
+	message   string
+	ok        bool
+}
+
+func eventForConditionTransition(before, after *hermesv1alpha1.HermesAgentStatus, conditionType string) statusEvent {
+	beforeCondition := api.FindStatusCondition(before.Conditions, conditionType)
+	afterCondition := api.FindStatusCondition(after.Conditions, conditionType)
+	if afterCondition == nil {
+		return statusEvent{}
+	}
+	if beforeCondition != nil && beforeCondition.Status == afterCondition.Status && beforeCondition.Reason == afterCondition.Reason && beforeCondition.Message == afterCondition.Message {
+		return statusEvent{}
+	}
+
+	return statusEvent{
+		eventType: eventTypeForCondition(afterCondition),
+		reason:    afterCondition.Reason,
+		message:   afterCondition.Message,
+		ok:        afterCondition.Reason != "",
+	}
+}
+
+func eventTypeForCondition(condition *metav1.Condition) string {
+	switch condition.Reason {
+	case "InvalidConfig", "MissingReferencedInput", "ReferencedInputsReadFailed", "ConfigMapReconcileFailed", "PersistentVolumeClaimReconcileFailed", "PersistentVolumeClaimLost", "StatefulSetReconcileFailed", "ServiceReconcileFailed", "NetworkPolicyReconcileFailed":
+		return corev1.EventTypeWarning
+	default:
+		return corev1.EventTypeNormal
+	}
+}
+
+func missingReferenceMessages(referencedInputs referencedInputState) []string {
+	messages := []string{}
+	appendMessages := func(snapshot referencedObjectSnapshot) {
+		if snapshot.Optional && !snapshot.Present {
+			return
+		}
+		if snapshot.Present && snapshot.KeyFound {
+			return
+		}
+		if !snapshot.Present {
+			messages = append(messages, fmt.Sprintf("%s %s was not found", snapshot.Kind, snapshot.Name))
+			return
+		}
+		if snapshot.Optional && snapshot.Key != "" && !snapshot.KeyFound {
+			return
+		}
+		if snapshot.Key != "" && !snapshot.KeyFound {
+			messages = append(messages, fmt.Sprintf("%s %s is missing key %s", snapshot.Kind, snapshot.Name, snapshot.Key))
+		}
+	}
+
+	for _, snapshot := range referencedInputs.FileRefs {
+		appendMessages(snapshot)
+	}
+	for _, snapshot := range referencedInputs.EnvValueRefs {
+		appendMessages(snapshot)
+	}
+	for _, snapshot := range referencedInputs.EnvFrom {
+		appendMessages(snapshot)
+	}
+	for _, snapshot := range referencedInputs.SecretRefs {
+		appendMessages(snapshot)
+	}
+	return messages
+}
+
+func joinMessages(messages []string) string {
+	if len(messages) == 1 {
+		return messages[0]
+	}
+	return fmt.Sprintf("%s; %s", messages[0], joinMessages(messages[1:]))
 }
 
 func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
@@ -541,7 +671,7 @@ func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *herm
 	return r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
 		status.ReadyReplicas = statusView.readyReplicas
 		status.PersistenceBound = statusView.persistenceBound
-		setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Config inputs resolved successfully")
+		setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 		setCondition(status, conditionTypePersistenceReady, statusView.persistenceConditionStatus, statusView.persistenceReason, statusView.persistenceMessage)
 		setCondition(status, conditionTypeWorkloadReady, statusView.workloadConditionStatus, statusView.workloadReason, statusView.workloadMessage)
 		setCondition(status, conditionTypeReady, statusView.readyConditionStatus, statusView.readyReason, statusView.readyMessage)
@@ -574,10 +704,10 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 			if apierrors.IsNotFound(err) {
 				view.persistenceConditionStatus = metav1.ConditionFalse
 				view.persistenceReason = "PersistentVolumeClaimMissing"
-				view.persistenceMessage = fmt.Sprintf("PersistentVolumeClaim %s has not been created yet", pvcKey.Name)
+				view.persistenceMessage = fmt.Sprintf("PersistentVolumeClaim %s has not been created yet; inspect reconcile errors and storage settings", pvcKey.Name)
 				view.workloadConditionStatus = metav1.ConditionFalse
 				view.workloadReason = "WaitingForPersistence"
-				view.workloadMessage = "Workload is waiting for persistent storage"
+				view.workloadMessage = "Workload is waiting for the Hermes PVC to be created and bound"
 				view.readyConditionStatus = metav1.ConditionFalse
 				view.readyReason = view.persistenceReason
 				view.readyMessage = view.persistenceMessage
@@ -598,7 +728,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 			view.persistenceMessage = persistenceMessage(persistentVolumeClaim)
 			view.workloadConditionStatus = metav1.ConditionFalse
 			view.workloadReason = "WaitingForPersistence"
-			view.workloadMessage = "Workload is waiting for persistent storage"
+			view.workloadMessage = "Workload is waiting for the Hermes PVC to bind"
 			view.readyConditionStatus = metav1.ConditionFalse
 			view.readyReason = view.persistenceReason
 			view.readyMessage = view.persistenceMessage
@@ -608,7 +738,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 	} else {
 		view.persistenceConditionStatus = metav1.ConditionTrue
 		view.persistenceReason = "PersistenceDisabled"
-		view.persistenceMessage = "Persistence is disabled; HermesAgent is using ephemeral storage"
+		view.persistenceMessage = "Persistence is disabled; Hermes is using ephemeral storage"
 	}
 
 	statefulSet := &appsv1.StatefulSet{}
@@ -617,7 +747,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 		if apierrors.IsNotFound(err) {
 			view.workloadConditionStatus = metav1.ConditionFalse
 			view.workloadReason = "StatefulSetMissing"
-			view.workloadMessage = fmt.Sprintf("StatefulSet %s has not been created yet", statefulSetKey.Name)
+			view.workloadMessage = fmt.Sprintf("StatefulSet %s has not been created yet; inspect earlier reconcile errors", statefulSetKey.Name)
 			view.readyConditionStatus = metav1.ConditionFalse
 			view.readyReason = view.workloadReason
 			view.readyMessage = view.workloadMessage
@@ -639,14 +769,14 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 		view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
 		view.readyConditionStatus = metav1.ConditionTrue
 		view.readyReason = conditionTypeReady
-		view.readyMessage = "HermesAgent persistence and workload are ready"
+		view.readyMessage = "Hermes persistence and workload are ready"
 		view.phase = phaseReady
 		return view, nil
 	}
 
 	view.workloadConditionStatus = metav1.ConditionFalse
 	view.workloadReason = "StatefulSetProgressing"
-	view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
+	view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas; inspect pod events, image pulls, and probe failures if rollout stalls", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
 	view.readyConditionStatus = metav1.ConditionFalse
 	view.readyReason = view.workloadReason
 	view.readyMessage = view.workloadMessage
@@ -680,9 +810,9 @@ func persistenceMessage(persistentVolumeClaim *corev1.PersistentVolumeClaim) str
 	case corev1.ClaimBound:
 		return fmt.Sprintf("PersistentVolumeClaim %s is bound", persistentVolumeClaim.Name)
 	case corev1.ClaimLost:
-		return fmt.Sprintf("PersistentVolumeClaim %s is lost", persistentVolumeClaim.Name)
+		return fmt.Sprintf("PersistentVolumeClaim %s is lost; inspect the storage backend and recreate the claim if needed", persistentVolumeClaim.Name)
 	default:
-		return fmt.Sprintf("PersistentVolumeClaim %s is waiting to bind", persistentVolumeClaim.Name)
+		return fmt.Sprintf("PersistentVolumeClaim %s is waiting to bind; check storage class, capacity, and access modes", persistentVolumeClaim.Name)
 	}
 }
 

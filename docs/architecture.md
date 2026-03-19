@@ -153,6 +153,17 @@ The managed Hermes pod is hardened with restricted-style defaults:
 
 The operator image itself also follows a locked-down container model.
 
+## Day-2 feedback model
+
+The operator is expected to be diagnosable with standard Kubernetes workflows.
+That means status conditions are only part of the UX; the reconciler also emits focused Kubernetes events for important transitions and failures so `kubectl describe hermesagent <name>` is useful during incidents.
+
+High-signal events are emitted for:
+- invalid or unreadable configuration inputs
+- PVC pending, lost, and bound transitions
+- StatefulSet progress and readiness
+- Service and NetworkPolicy conflicts or reconcile failures
+
 ## Install model
 
 Operator installation is packaged as a Helm chart under `charts/chart/`.

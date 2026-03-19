@@ -149,6 +149,11 @@ var _ = Describe("HermesAgentReconciler", func() {
 			LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 			Key:                  "config.yaml",
 		}
+		sharedConfig := &corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: namespace.Name},
+			Data:       map[string]string{"config.yaml": testInlineConfig},
+		}
+		Expect(k8sClient.Create(ctx, sharedConfig)).To(Succeed())
 		Expect(k8sClient.Create(ctx, agent)).To(Succeed())
 
 		reconciler := newReconciler()
