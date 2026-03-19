@@ -87,6 +87,20 @@ Label selector for controller-manager pods.
 {{- end }}
 
 {{/*
+Whether the chart-managed webhook TLS path is enabled.
+*/}}
+{{- define "k8s-operator-hermes-agent.webhookTLSManaged" -}}
+{{- if and .Values.webhook.enabled .Values.certManager.enabled -}}true{{- end -}}
+{{- end }}
+
+{{/*
+Whether the chart-managed metrics TLS path is enabled.
+*/}}
+{{- define "k8s-operator-hermes-agent.metricsTLSManaged" -}}
+{{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled -}}true{{- end -}}
+{{- end }}
+
+{{/*
 Shared cert-manager issuer name.
 */}}
 {{- define "k8s-operator-hermes-agent.selfSignedIssuerName" -}}
@@ -112,4 +126,11 @@ Metrics serving certificate secret name.
 */}}
 {{- define "k8s-operator-hermes-agent.metricsServingCertificateSecretName" -}}
 {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "metrics-server-cert" "context" .) }}
+{{- end }}
+
+{{/*
+Internal DNS name for the metrics Service.
+*/}}
+{{- define "k8s-operator-hermes-agent.metricsServiceServerName" -}}
+{{ printf "%s.%s.svc" (include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-metrics-service" "context" .)) .Release.Namespace }}
 {{- end }}

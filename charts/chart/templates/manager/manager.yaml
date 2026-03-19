@@ -38,10 +38,10 @@ spec:
         {{- if .Values.leaderElection.enabled }}
         - --leader-elect
         {{- end }}
-        {{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+        {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
         - --metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs
         {{- end }}
-        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
         - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
         {{- end }}
         command:
@@ -50,7 +50,11 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         env:
         - name: ENABLE_WEBHOOKS
-          value: {{ ternary "true" "false" (and .Values.webhook.enabled .Values.certManager.enabled) | quote }}
+          {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
+          value: "true"
+          {{- else }}
+          value: "false"
+          {{- end }}
         livenessProbe:
           httpGet:
             path: /healthz
@@ -59,7 +63,7 @@ spec:
           periodSeconds: 20
         name: manager
         ports:
-        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
         - containerPort: {{ .Values.webhook.port }}
           name: webhook-server
           protocol: TCP
@@ -79,12 +83,12 @@ spec:
         securityContext:
           {{- toYaml .Values.containerSecurityContext | nindent 10 }}
         volumeMounts:
-        {{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+        {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
         - mountPath: /tmp/k8s-metrics-server/metrics-certs
           name: metrics-certs
           readOnly: true
         {{- end }}
-        {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+        {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: webhook-certs
           readOnly: true
@@ -110,12 +114,12 @@ spec:
       {{- end }}
       terminationGracePeriodSeconds: 10
       volumes:
-      {{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+      {{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
       - name: metrics-certs
         secret:
           secretName: {{ include "k8s-operator-hermes-agent.metricsServingCertificateSecretName" . }}
       {{- end }}
-      {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+      {{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
       - name: webhook-certs
         secret:
           secretName: webhook-server-cert

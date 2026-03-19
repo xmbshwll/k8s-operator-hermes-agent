@@ -1,4 +1,4 @@
-{{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+{{- if include "k8s-operator-hermes-agent.webhookTLSManaged" . }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

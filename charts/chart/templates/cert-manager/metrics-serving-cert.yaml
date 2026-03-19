@@ -1,4 +1,4 @@
-{{- if and .Values.metrics.enabled .Values.certManager.enabled .Values.metrics.certManager.enabled }}
+{{- if include "k8s-operator-hermes-agent.metricsTLSManaged" . }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
