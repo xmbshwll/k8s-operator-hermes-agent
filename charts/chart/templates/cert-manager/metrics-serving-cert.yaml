@@ -3,10 +3,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   labels:
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
+{{ include "k8s-operator-hermes-agent.commonLabels" . | nindent 4 }}
   name: {{ include "k8s-operator-hermes-agent.metricsServingCertificateName" . }}
   namespace: {{ .Release.Namespace }}
 spec:

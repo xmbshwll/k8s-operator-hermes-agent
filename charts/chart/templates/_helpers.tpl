@@ -62,6 +62,16 @@ Service account name for the controller manager.
 {{- end }}
 
 {{/*
+Shared chart labels.
+*/}}
+{{- define "k8s-operator-hermes-agent.commonLabels" -}}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
+{{- end }}
+
+{{/*
 Release-scoped match labels for controller-manager resources.
 */}}
 {{- define "k8s-operator-hermes-agent.controllerManagerMatchLabels" -}}
@@ -74,9 +84,8 @@ control-plane: controller-manager
 Shared labels for controller-manager resources.
 */}}
 {{- define "k8s-operator-hermes-agent.controllerManagerLabels" -}}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-{{ include "k8s-operator-hermes-agent.controllerManagerMatchLabels" . }}
+{{ include "k8s-operator-hermes-agent.commonLabels" . }}
+control-plane: controller-manager
 {{- end }}
 
 {{/*
