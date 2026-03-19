@@ -54,6 +54,15 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 			g.Expect(strings.TrimSpace(output)).To(Equal("True"))
 		}, 3*time.Minute, time.Second).Should(Succeed())
 
+		By("waiting for the webhook service endpoints to be ready")
+		waitForWebhookEndpointsReady()
+
+		By("waiting for webhook CA injection")
+		waitForWebhookCABundles()
+
+		By("waiting for the webhook server to stabilize")
+		time.Sleep(5 * time.Second)
+
 		By("creating a namespace for HermesAgent validation")
 		_, err = kubectl("create", "ns", hermesAgentNamespace)
 		Expect(err).NotTo(HaveOccurred())
@@ -726,6 +735,39 @@ func statefulSetPodName(name string) string {
 
 func pvcName(name string) string {
 	return fmt.Sprintf("%s-data", name)
+}
+
+func waitForWebhookEndpointsReady() {
+	Eventually(func(g Gomega) {
+		output, err := kubectl(
+			"get", "endpointslices.discovery.k8s.io",
+			"-n", namespace,
+			"-l", "kubernetes.io/service-name=k8s-operator-hermes-agent-webhook-service",
+			"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}",
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(output)).NotTo(BeEmpty())
+	}, 3*time.Minute, time.Second).Should(Succeed())
+}
+
+func waitForWebhookCABundles() {
+	Eventually(func(g Gomega) {
+		mutatingBundle, err := kubectl(
+			"get", "mutatingwebhookconfigurations.admissionregistration.k8s.io",
+			"k8s-operator-hermes-agent-mutating-webhook-configuration",
+			"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}",
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(mutatingBundle)).NotTo(BeEmpty())
+
+		validatingBundle, err := kubectl(
+			"get", "validatingwebhookconfigurations.admissionregistration.k8s.io",
+			"k8s-operator-hermes-agent-validating-webhook-configuration",
+			"-o", "jsonpath={.webhooks[0].clientConfig.caBundle}",
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(validatingBundle)).NotTo(BeEmpty())
+	}, 3*time.Minute, time.Second).Should(Succeed())
 }
 
 func waitForPodCreated(podName string) {
