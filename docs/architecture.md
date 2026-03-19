@@ -137,7 +137,9 @@ The default policy shape allows:
 - DNS
 - HTTP
 - HTTPS
-- SSH when the terminal backend is `ssh`
+- SSH when `spec.terminal.backend` is `ssh`
+
+That SSH rule comes from the CR field, not by parsing Hermes config. Keep `spec.terminal.backend` aligned with the backend configured in `config.yaml`, or the operator can wire Kubernetes resources for the wrong terminal mode.
 
 The policy is deliberately narrow and aligned with the MVP workload shape.
 

@@ -566,8 +566,11 @@ spec:
                 properties:
                   backend:
                     default: local
-                    description: backend selects the terminal backend Hermes should
-                      use in Kubernetes.
+                    description: |-
+                      backend declares the terminal backend the operator should wire for this pod.
+                      Keep this in sync with the backend configured in Hermes itself.
+                      The operator uses this for Kubernetes-side behavior such as generated egress rules;
+                      the runtime image still reads its own terminal backend from config.yaml.
                     enum:
                     - local
                     - ssh

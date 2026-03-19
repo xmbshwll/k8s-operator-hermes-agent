@@ -151,10 +151,34 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.service.port"))
 		})
 
+		It("rejects inline terminal backend mismatches", func() {
+			namespace := newNamespace()
+			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-terminal-%d", time.Now().UnixNano()))
+			obj.Spec.Terminal.Backend = "ssh"
+			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: local\n"
+
+			err := k8sClient.Create(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			var statusErr *apierrors.StatusError
+			Expect(errors.As(err, &statusErr)).To(BeTrue())
+			Expect(statusErr.ErrStatus.Message).To(ContainSubstring("terminal.backend in spec.config.raw must match spec.terminal.backend (ssh)"))
+		})
+
+		It("requires inline ssh config when spec.terminal.backend is ssh", func() {
+			namespace := newNamespace()
+			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("missing-terminal-%d", time.Now().UnixNano()))
+			obj.Spec.Terminal.Backend = "ssh"
+			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
+
+			_, err := validator.ValidateCreate(ctx, obj)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("spec.terminal.backend is ssh, so spec.config.raw must set terminal.backend to ssh as well"))
+		})
+
 		It("admits a valid HermesAgent", func() {
 			namespace := newNamespace()
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("valid-%d", time.Now().UnixNano()))
-			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
+			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: local\n"
 			obj.Spec.GatewayConfig.Raw = "{}\n"
 			obj.Spec.EnvFrom = []corev1.EnvFromSource{{
 				SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},

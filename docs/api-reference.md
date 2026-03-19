@@ -130,7 +130,16 @@ Supported values:
 - `local`
 - `ssh`
 
-When `backend: ssh` is used, remember to provide the corresponding SSH env and secret material expected by your Hermes runtime image.
+`spec.terminal.backend` is operator-side wiring, not a second runtime entrypoint. The operator uses it for Kubernetes behavior such as generated egress rules.
+Your Hermes runtime image still reads its terminal backend from `config.yaml`, so keep `spec.terminal.backend` and `spec.config.raw.terminal.backend` aligned.
+
+When `backend: ssh` is used:
+- set `spec.terminal.backend: ssh`
+- set `terminal.backend: ssh` in Hermes `config.yaml`
+- provide the SSH env and mounted secret material your runtime image expects
+
+When inline `spec.config.raw` is used, the webhook rejects explicit terminal backend mismatches.
+When `config.yaml` comes from `configMapRef`, the operator cannot inspect it at admission time, so you must keep the referenced config aligned yourself.
 
 ## Probes
 

@@ -59,7 +59,7 @@ kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
 
 File: `hermes_v1alpha1_hermesagent_ssh.yaml`
 
-- Shows how to switch the CR to `terminal.backend: ssh`
+- Shows how to switch both `spec.terminal.backend` and Hermes `config.yaml` to `ssh`
 - Supplies SSH host and user via a secret-backed environment source
 - Includes a mounted secret bundle for SSH auth material
 - Secret updates trigger a reconcile and pod rollout
@@ -73,6 +73,7 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 Before applying it:
 - replace the placeholder SSH host, user, and model provider key
 - add your SSH private key and `known_hosts` content to the auth secret
+- keep `spec.terminal.backend` and `config.raw.terminal.backend` aligned
 - make sure your Hermes runtime image knows how to consume the mounted SSH auth bundle
 - leave `networkPolicy.enabled: true` unless you are intentionally supplying your own policy
 
