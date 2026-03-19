@@ -8,6 +8,13 @@ metadata:
     helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
     app.kubernetes.io/instance: {{ .Release.Name }}
     control-plane: controller-manager
+    {{- with .Values.metrics.service.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    {{- with .Values.metrics.service.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
   name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-metrics-service" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:

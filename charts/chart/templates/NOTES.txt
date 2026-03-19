@@ -6,6 +6,9 @@ The controller and CRDs have been installed in namespace {{ .Release.Namespace }
 {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
 Admission webhooks are enabled and use cert-manager-managed certificates.
 {{- end }}
+{{- if .Values.metrics.serviceMonitor.enabled }}
+If the cluster has the ServiceMonitor CRD, a ServiceMonitor may be rendered for HTTPS metrics scraping.
+{{- end }}
 
 Verify the installation:
 

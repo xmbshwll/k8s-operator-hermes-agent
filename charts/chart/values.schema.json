@@ -135,18 +135,84 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "annotations": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "labels": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          },
+          "required": ["annotations", "labels"]
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "namespace": { "type": "string" },
+            "additionalLabels": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "interval": { "type": "string" },
+            "scrapeTimeout": { "type": "string" },
+            "tlsConfig": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "insecureSkipVerify": { "type": "boolean" },
+                "serverName": { "type": "string" }
+              },
+              "required": ["insecureSkipVerify", "serverName"]
+            }
+          },
+          "required": ["enabled", "namespace", "additionalLabels", "interval", "scrapeTimeout", "tlsConfig"]
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "namespaceSelector": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "matchLabels": {
+                  "type": "object",
+                  "additionalProperties": { "type": "string" }
+                }
+              },
+              "required": ["matchLabels"]
+            }
+          },
+          "required": ["enabled", "namespaceSelector"]
+        }
       },
-      "required": ["enabled"]
+      "required": ["enabled", "service", "serviceMonitor", "networkPolicy"]
     },
     "webhook": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean" },
-        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" }
+          },
+          "required": ["enabled"]
+        }
       },
-      "required": ["enabled", "port"]
+      "required": ["enabled", "port", "networkPolicy"]
     },
     "certManager": {
       "type": "object",

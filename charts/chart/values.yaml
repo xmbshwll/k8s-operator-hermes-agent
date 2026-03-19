@@ -79,6 +79,23 @@ resources:
 ##
 metrics:
   enabled: true
+  service:
+    annotations: {}
+    labels: {}
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    additionalLabels: {}
+    interval: ""
+    scrapeTimeout: ""
+    tlsConfig:
+      insecureSkipVerify: false
+      serverName: ""
+  networkPolicy:
+    enabled: false
+    namespaceSelector:
+      matchLabels:
+        metrics: enabled
 
 ## Admission webhook configuration.
 ## Production installs should leave both webhook and certManager enabled.
@@ -86,6 +103,8 @@ metrics:
 webhook:
   enabled: true
   port: 9443
+  networkPolicy:
+    enabled: false
 
 ## cert-manager integration for webhook TLS certificates.
 ## Requires cert-manager CRDs and controller to be installed in the cluster.

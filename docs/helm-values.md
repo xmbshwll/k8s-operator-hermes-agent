@@ -159,10 +159,40 @@ Container resource requests and limits for the operator itself.
 ```yaml
 metrics:
   enabled: true
+  service:
+    annotations: {}
+    labels: {}
+  serviceMonitor:
+    enabled: false
+    namespace: ""
+    additionalLabels: {}
+    interval: ""
+    scrapeTimeout: ""
+    tlsConfig:
+      insecureSkipVerify: false
+      serverName: ""
+  networkPolicy:
+    enabled: false
+    namespaceSelector:
+      matchLabels:
+        metrics: enabled
 ```
 
-Enables the controller-runtime metrics Service and RBAC protection.
-If you plan to scrape metrics in production, pair this with the secure metrics and Prometheus guidance below.
+`metrics.enabled` exposes the controller-runtime metrics Service and RBAC protection.
+Additional chart-native options now cover:
+- `metrics.service.annotations` and `metrics.service.labels` for service discovery metadata
+- `metrics.serviceMonitor.*` for Prometheus Operator integration
+- `metrics.networkPolicy.*` for optional ingress protection on the metrics endpoint
+
+`metrics.serviceMonitor.enabled=true` only renders a `ServiceMonitor` when the `monitoring.coreos.com/v1` API exists in the cluster at render time.
+
+#### TLS expectations for metrics scraping
+
+The metrics endpoint is served over HTTPS.
+The secure default is `metrics.serviceMonitor.tlsConfig.insecureSkipVerify=false`, which means your Prometheus stack must trust the serving certificate presented by the controller.
+If your environment does not trust that certificate yet, either:
+- configure Prometheus trust correctly, optionally setting `metrics.serviceMonitor.tlsConfig.serverName` when you need explicit hostname verification, or
+- set `metrics.serviceMonitor.tlsConfig.insecureSkipVerify=true` only as a deliberate local-development shortcut
 
 ### `webhook`
 
@@ -170,10 +200,13 @@ If you plan to scrape metrics in production, pair this with the secure metrics a
 webhook:
   enabled: true
   port: 9443
+  networkPolicy:
+    enabled: false
 ```
 
 Controls admission webhook serving.
 The chart is designed for webhook-enabled installs.
+`webhook.networkPolicy.enabled=true` adds an ingress NetworkPolicy for webhook traffic.
 
 ### `certManager`
 
