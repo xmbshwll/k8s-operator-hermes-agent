@@ -123,18 +123,13 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
-	for _, file := range plan.Files {
-		if !file.Generated {
-			continue
+	if err := r.reconcileGeneratedConfigMaps(ctx, agent, plan); err != nil {
+		if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+			markConfigFailure(status, "ConfigMapReconcileFailed", err.Error(), "Inline configuration resources could not be reconciled")
+		}); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("reconcile configmap: %w (status update failed: %v)", err, statusErr)
 		}
-		if err := r.reconcileInlineConfigMap(ctx, agent, file); err != nil {
-			if statusErr := r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
-				markConfigFailure(status, "ConfigMapReconcileFailed", err.Error(), "Inline configuration resources could not be reconciled")
-			}); statusErr != nil {
-				return ctrl.Result{}, fmt.Errorf("reconcile configmap: %w (status update failed: %v)", err, statusErr)
-			}
-			return ctrl.Result{}, err
-		}
+		return ctrl.Result{}, err
 	}
 
 	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
@@ -437,6 +432,20 @@ func configSourceReferencesSecret(source hermesv1alpha1.HermesAgentConfigSource,
 	return source.SecretRef != nil && source.SecretRef.Name == name
 }
 
+func (r *HermesAgentReconciler) reconcileGeneratedConfigMaps(ctx context.Context, agent *hermesv1alpha1.HermesAgent, plan configPlan) error {
+	desiredGeneratedConfigMaps := map[string]struct{}{}
+	for _, file := range plan.Files {
+		if !file.Generated {
+			continue
+		}
+		desiredGeneratedConfigMaps[file.ConfigMapName] = struct{}{}
+		if err := r.reconcileInlineConfigMap(ctx, agent, file); err != nil {
+			return err
+		}
+	}
+	return r.cleanupStaleGeneratedConfigMaps(ctx, agent, desiredGeneratedConfigMaps)
+}
+
 func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, agent *hermesv1alpha1.HermesAgent, file resolvedConfigFile) error {
 	configMap := &corev1.ConfigMap{}
 	configMap.Namespace = agent.Namespace
@@ -448,6 +457,51 @@ func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, ag
 		return controllerutil.SetControllerReference(agent, configMap, r.Scheme)
 	})
 	return err
+}
+
+func (r *HermesAgentReconciler) cleanupStaleGeneratedConfigMaps(ctx context.Context, agent *hermesv1alpha1.HermesAgent, desired map[string]struct{}) error {
+	statefulSet := &appsv1.StatefulSet{}
+	if err := r.Get(ctx, client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}, statefulSet); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if !statefulSetReadyForGeneratedConfigCleanup(statefulSet) {
+		return nil
+	}
+
+	for _, id := range []string{"config", "gateway-config"} {
+		configMapName := generatedConfigMapName(agent.Name, id)
+		if _, keep := desired[configMapName]; keep {
+			continue
+		}
+
+		configMap := &corev1.ConfigMap{}
+		configMapKey := client.ObjectKey{Name: configMapName, Namespace: agent.Namespace}
+		if err := r.Get(ctx, configMapKey, configMap); err != nil {
+			if apierrors.IsNotFound(err) {
+				continue
+			}
+			return err
+		}
+		if !metav1.IsControlledBy(configMap, agent) {
+			continue
+		}
+		if err := r.Delete(ctx, configMap); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func statefulSetReadyForGeneratedConfigCleanup(statefulSet *appsv1.StatefulSet) bool {
+	desiredReplicas := int32(1)
+	if statefulSet.Spec.Replicas != nil {
+		desiredReplicas = *statefulSet.Spec.Replicas
+	}
+	return statefulSet.Status.ReadyReplicas >= desiredReplicas && statefulSet.Status.ObservedGeneration >= statefulSet.Generation
 }
 
 func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {

@@ -38,6 +38,10 @@ func requireRecordedEvent(t *testing.T, recorder *record.FakeRecorder, want ...s
 	}
 }
 
+func ownedByAgentReference(agent *hermesv1alpha1.HermesAgent) metav1.OwnerReference {
+	return *metav1.NewControllerRef(agent, hermesv1alpha1.GroupVersion.WithKind("HermesAgent"))
+}
+
 func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
@@ -224,6 +228,155 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 	}
 	if initialHash == updatedHash {
 		t.Fatalf("expected StatefulSet pod template config hash to change when referenced inputs change, got %q", updatedHash)
+	}
+}
+
+func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	externalConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
+		Data:       map[string]string{"config.yaml": testInlineConfig},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-stale-configmaps"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: externalConfigMap.Name},
+				Key:                  "config.yaml",
+			}},
+		},
+	}
+	staleConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            generatedConfigMapName(agent.Name, "config"),
+			Namespace:       testNamespace,
+			OwnerReferences: []metav1.OwnerReference{ownedByAgentReference(agent)},
+		},
+		Data: map[string]string{"config.yaml": testInlineConfig},
+	}
+	staleGatewayConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            generatedConfigMapName(agent.Name, "gateway-config"),
+			Namespace:       testNamespace,
+			OwnerReferences: []metav1.OwnerReference{ownedByAgentReference(agent)},
+		},
+		Data: map[string]string{"gateway.json": "{}\n"},
+	}
+	oneReplica := int32(1)
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: agent.Name, Namespace: testNamespace, Generation: 1},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &oneReplica},
+		Status: appsv1.StatefulSetStatus{
+			ObservedGeneration: 1,
+			ReadyReplicas:      1,
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, externalConfigMap, staleConfigMap, staleGatewayConfigMap, statefulSet).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(staleConfigMap), &corev1.ConfigMap{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected stale generated config ConfigMap to be deleted, got error: %v", err)
+	}
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(staleGatewayConfigMap), &corev1.ConfigMap{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected stale generated gateway ConfigMap to be deleted, got error: %v", err)
+	}
+}
+
+func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	externalGatewayConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{Name: "shared-gateway-config", Namespace: testNamespace},
+		Data:       map[string]string{"gateway.json": "{}\n"},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-keep-active-generated"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			GatewayConfig: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+				LocalObjectReference: corev1.LocalObjectReference{Name: externalGatewayConfigMap.Name},
+				Key:                  "gateway.json",
+			}},
+		},
+	}
+	staleGatewayConfigMap := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:            generatedConfigMapName(agent.Name, "gateway-config"),
+			Namespace:       testNamespace,
+			OwnerReferences: []metav1.OwnerReference{ownedByAgentReference(agent)},
+		},
+		Data: map[string]string{"gateway.json": "{\"old\":true}\n"},
+	}
+	oneReplica := int32(1)
+	statefulSet := &appsv1.StatefulSet{
+		ObjectMeta: metav1.ObjectMeta{Name: agent.Name, Namespace: testNamespace, Generation: 1},
+		Spec:       appsv1.StatefulSetSpec{Replicas: &oneReplica},
+		Status: appsv1.StatefulSetStatus{
+			ObservedGeneration: 1,
+			ReadyReplicas:      1,
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, externalGatewayConfigMap, staleGatewayConfigMap, statefulSet).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	activeConfigMap := &corev1.ConfigMap{}
+	activeConfigMapKey := client.ObjectKey{Name: generatedConfigMapName(agent.Name, "config"), Namespace: testNamespace}
+	if err := k8sClient.Get(context.Background(), activeConfigMapKey, activeConfigMap); err != nil {
+		t.Fatalf("expected active generated config ConfigMap to exist, got error: %v", err)
+	}
+	if !metav1.IsControlledBy(activeConfigMap, agent) {
+		t.Fatal("expected active generated config ConfigMap to remain owned by HermesAgent")
+	}
+
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(staleGatewayConfigMap), &corev1.ConfigMap{}); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected stale generated gateway ConfigMap to be deleted, got error: %v", err)
 	}
 }
 
