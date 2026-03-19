@@ -37,15 +37,14 @@ EOF
 chmod 0777 "$workdir"
 
 log "Starting published runtime image under the operator contract"
-container_id="$({
-  docker run -d \
-    --user "${runtime_uid}:${runtime_uid}" \
-    -e HERMES_HOME=/data/hermes \
-    -v "$workdir:/data/hermes" \
-    --entrypoint sh \
-    "$image" \
-    -lc 'hermes gateway'
-} | tr -d '\n')"
+container_id="$(docker run -d \
+  --user "${runtime_uid}:${runtime_uid}" \
+  -e HERMES_HOME=/data/hermes \
+  -v "$workdir:/data/hermes" \
+  --entrypoint sh \
+  "$image" \
+  -lc 'hermes gateway'
+)"
 
 log "Checking binary availability, user, and writable paths"
 docker exec "$container_id" sh -lc "
