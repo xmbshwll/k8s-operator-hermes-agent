@@ -1,11 +1,12 @@
 # Release workflow
 
 This repository ships operator releases from Git tags.
-A release produces three end-user artifacts:
+A release produces four end-user artifacts:
 
 - a versioned controller image in GHCR
 - a versioned Helm chart in GHCR as an OCI artifact
 - a versioned `install.yaml` bundle attached to the GitHub release
+- a versioned CRD bundle for explicit Helm upgrades
 
 ## Versioning
 
@@ -22,6 +23,7 @@ The release workflow maps the tag to published artifacts like this:
 - Helm chart version: `<version>`
 - Helm chart appVersion: `<version>`
 - release bundle: `install.yaml` attached to the `v<version>` GitHub release
+- CRD upgrade bundle: `hermesagents.hermes.nous.ai-crd.yaml` attached to the `v<version>` GitHub release
 
 ## Published install paths
 
@@ -39,6 +41,7 @@ The packaged release chart already points at the matching published controller i
 End users do not need to rebuild the operator image or override `image.repository` / `image.tag` for normal installs.
 
 Published releases enable admission webhooks by default, so the target cluster must already have cert-manager installed.
+For upgrades, apply the matching `hermesagents.hermes.nous.ai-crd.yaml` release asset before running `helm upgrade`.
 
 ### GitHub release bundle
 
@@ -72,10 +75,11 @@ On every `v*` tag, GitHub Actions will:
 
 1. build and push the multi-arch controller image to GHCR
 2. generate `dist/install.yaml` with the tagged image reference
-3. package the Helm chart with matching chart version and image defaults
-4. push the packaged Helm chart to GHCR as an OCI artifact
-5. attach `install.yaml`, the chart `.tgz`, and `SHA256SUMS` to the GitHub release
-6. generate release notes from GitHub metadata
+3. generate `dist/hermesagents.hermes.nous.ai-crd.yaml` for explicit Helm upgrades
+4. package the Helm chart with matching chart version and image defaults
+5. push the packaged Helm chart to GHCR as an OCI artifact
+6. attach `install.yaml`, `hermesagents.hermes.nous.ai-crd.yaml`, the chart `.tgz`, and `SHA256SUMS` to the GitHub release
+7. generate release notes from GitHub metadata
 
 ## Release notes
 
@@ -90,6 +94,7 @@ You can build the release artifacts locally before tagging:
 
 ```sh
 make build-installer IMG=ghcr.io/xmbshwll/k8s-operator-hermes-agent:v<version>
+make build-crd-bundle
 make package-chart \
   CHART_VERSION=<version> \
   CHART_APP_VERSION=<version> \

@@ -79,6 +79,9 @@ jobs:
       - name: Build installer bundle
         run: make build-installer IMG=${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.tag }}
 
+      - name: Build CRD upgrade bundle
+        run: make build-crd-bundle
+
       - name: Package Helm chart
         run: |
           make package-chart \
@@ -97,7 +100,7 @@ jobs:
           chart_file="k8s-operator-hermes-agent-${{ steps.vars.outputs.version }}.tgz"
           (
             cd dist
-            sha256sum install.yaml "chart/${chart_file}" | awk '{ name = $2; sub(/^chart\//, "", name); print $1 "  " name }' > SHA256SUMS
+            sha256sum install.yaml hermesagents.hermes.nous.ai-crd.yaml "chart/${chart_file}" | awk '{ name = $2; sub(/^chart\//, "", name); print $1 "  " name }' > SHA256SUMS
           )
 
       - name: Publish GitHub release
@@ -106,5 +109,6 @@ jobs:
           generate_release_notes: true
           files: |
             dist/install.yaml
+            dist/hermesagents.hermes.nous.ai-crd.yaml
             dist/chart/k8s-operator-hermes-agent-${{ steps.vars.outputs.version }}.tgz
             dist/SHA256SUMS

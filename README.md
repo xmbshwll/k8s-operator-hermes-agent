@@ -115,6 +115,7 @@ This installs:
 - the metrics service
 
 For chart configuration, install notes, and upgrade guidance, see [docs/helm-values.md](docs/helm-values.md).
+For Helm upgrades, apply the release CRD bundle first and then run `helm upgrade`; the chart CRD in `crds/` is install-time only.
 
 ### 3. Verify the operator
 

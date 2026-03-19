@@ -19,7 +19,16 @@ helm install k8s-operator-hermes-agent \
 
 ## Upgrade
 
+Helm installs the chart CRD on first install from `crds/`, but Helm does not perform normal CRD upgrades from that directory on later `helm upgrade` runs.
+The supported upgrade path is therefore explicit and two-step:
+
+1. apply the matching release CRD bundle
+2. run `helm upgrade`
+
 ```sh
+kubectl apply -f \
+  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v<version>/hermesagents.hermes.nous.ai-crd.yaml
+
 helm upgrade k8s-operator-hermes-agent \
   oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
   --version <version> \
@@ -30,6 +39,9 @@ Before upgrading:
 - check the release notes
 - confirm cert-manager is healthy if webhooks are enabled
 - verify existing `HermesAgent` resources are healthy before changing the operator
+- always apply the CRD bundle first, even when the schema change seems minor
+
+Do not rely on plain `helm upgrade` by itself for CRD changes, or you can end up with a new controller running against an old CRD schema.
 
 ## Values
 

@@ -60,6 +60,15 @@ jobs:
       - name: Check Helm release status
         run: make helm-status
 
+      - name: Validate explicit CRD-first Helm upgrade flow
+        run: |
+          make build-crd-bundle
+          kubectl apply -f dist/hermesagents.hermes.nous.ai-crd.yaml
+          helm upgrade k8s-operator-hermes-agent ./charts/chart \
+            --namespace k8s-operator-hermes-agent-system \
+            --wait \
+            --timeout 300s
+
       - name: Validate real HermesAgent flow through Helm install
         run: |
           kubectl create namespace hermes-chart-e2e
