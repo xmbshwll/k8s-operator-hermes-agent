@@ -15,10 +15,13 @@ Verify the installation:
 
 Next steps:
 
-  1. Create a HermesAgent from the sample catalog under config/samples/
-  2. Describe the resource for status and events:
+  1. Review chart values and production deployment knobs:
+       helm get values {{ .Release.Name }} -n {{ .Release.Namespace }}
+       docs/helm-values.md
+  2. Create a HermesAgent from the sample catalog under config/samples/
+  3. Describe the resource for status and events:
        kubectl describe hermesagent <name> -n <namespace>
-  3. Read the user docs:
+  4. Read the user docs:
        README.md
        docs/api-reference.md
        docs/helm-values.md

@@ -45,6 +45,8 @@ Do not rely on plain `helm upgrade` by itself for CRD changes, or you can end up
 
 ## Values
 
+The chart now includes `values.schema.json`, so Helm validates the supported values surface before rendering or installing.
+
 ### `image`
 
 ```yaml
@@ -56,6 +58,24 @@ image:
 
 Controls the operator controller-manager image, not the Hermes runtime image used by `HermesAgent.spec.image`.
 
+### `replicaCount`
+
+```yaml
+replicaCount: 1
+```
+
+Controls the controller-manager Deployment replica count.
+If you increase this above `1`, leave `leaderElection.enabled=true`.
+
+### `imagePullSecrets`
+
+```yaml
+imagePullSecrets:
+  - name: ghcr-pull-secret
+```
+
+Optional pull secrets for the controller-manager pod.
+
 ### `leaderElection`
 
 ```yaml
@@ -63,7 +83,7 @@ leaderElection:
   enabled: true
 ```
 
-Leave enabled for normal clustered installs.
+Leave enabled for normal clustered installs, especially when `replicaCount > 1`.
 
 ### `serviceAccount`
 
@@ -74,6 +94,51 @@ serviceAccount:
 ```
 
 If `create: false`, set `name` to an existing ServiceAccount.
+
+### `podAnnotations` and `podLabels`
+
+```yaml
+podAnnotations:
+  cluster-autoscaler.kubernetes.io/safe-to-evict: "true"
+
+podLabels:
+  environment: production
+```
+
+Adds extra metadata to the controller-manager pod without affecting the built-in selectors.
+
+### `podSecurityContext` and `containerSecurityContext`
+
+```yaml
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+```
+
+Lets you override the default hardened security settings when the target cluster needs a small adjustment.
+
+### Scheduling knobs
+
+```yaml
+nodeSelector:
+  kubernetes.io/os: linux
+
+tolerations: []
+
+affinity: {}
+
+topologySpreadConstraints: []
+```
+
+Use these to steer the controller-manager pod onto the right nodes for production installs.
 
 ### `resources`
 

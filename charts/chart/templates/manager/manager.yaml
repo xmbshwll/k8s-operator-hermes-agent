@@ -10,7 +10,7 @@ metadata:
   name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
@@ -19,13 +19,23 @@ spec:
     metadata:
       annotations:
         kubectl.kubernetes.io/default-container: manager
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
         app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
         helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
         app.kubernetes.io/instance: {{ .Release.Name }}
         app.kubernetes.io/managed-by: {{ .Release.Service }}
         control-plane: controller-manager
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
       - args:
         {{- if .Values.metrics.enabled }}
@@ -70,11 +80,7 @@ spec:
           {}
           {{- end }}
         securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
+          {{- toYaml .Values.containerSecurityContext | nindent 10 }}
         volumeMounts:
         {{- if and .Values.webhook.enabled .Values.certManager.enabled }}
         - mountPath: /tmp/k8s-webhook-server/serving-certs
@@ -82,10 +88,24 @@ spec:
           readOnly: true
         {{- end }}
       securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       serviceAccountName: {{ include "k8s-operator-hermes-agent.serviceAccountName" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       terminationGracePeriodSeconds: 10
       volumes:
       {{- if and .Values.webhook.enabled .Values.certManager.enabled }}

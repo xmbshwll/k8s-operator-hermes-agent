@@ -13,6 +13,15 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
+## Number of controller-manager replicas.
+## Keep leaderElection enabled when replicaCount > 1.
+##
+replicaCount: 1
+
+## Optional image pull secrets for the controller-manager pod.
+##
+imagePullSecrets: []
+
 ## Leader election should stay enabled for clustered installs.
 ##
 leaderElection:
@@ -23,6 +32,37 @@ leaderElection:
 serviceAccount:
   create: true
   name: ""
+
+## Extra annotations applied to the controller-manager pod.
+##
+podAnnotations: {}
+
+## Extra labels applied to the controller-manager pod.
+##
+podLabels: {}
+
+## Security context for the controller-manager pod.
+##
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+## Security context for the controller-manager container.
+##
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+## Scheduling constraints for the controller-manager pod.
+##
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
 
 ## Resource requests and limits for the controller manager.
 ##

@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      },
+      "required": ["repository", "tag", "pullPolicy"]
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string", "minLength": 1 }
+        },
+        "required": ["name"]
+      }
+    },
+    "leaderElection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"]
+    },
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" }
+      },
+      "required": ["create", "name"]
+    },
+    "podAnnotations": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "podLabels": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "runAsNonRoot": { "type": "boolean" },
+        "seccompProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "minLength": 1 }
+          },
+          "required": ["type"]
+        }
+      }
+    },
+    "containerSecurityContext": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "allowPrivilegeEscalation": { "type": "boolean" },
+        "readOnlyRootFilesystem": { "type": "boolean" },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "tolerations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "topologySpreadConstraints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "limits": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "requests": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"]
+    },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      },
+      "required": ["enabled", "port"]
+    },
+    "certManager": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"]
+    }
+  },
+  "required": [
+    "image",
+    "replicaCount",
+    "imagePullSecrets",
+    "leaderElection",
+    "serviceAccount",
+    "podAnnotations",
+    "podLabels",
+    "podSecurityContext",
+    "containerSecurityContext",
+    "nodeSelector",
+    "tolerations",
+    "affinity",
+    "topologySpreadConstraints",
+    "resources",
+    "metrics",
+    "webhook",
+    "certManager"
+  ]
+}
