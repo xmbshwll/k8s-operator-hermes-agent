@@ -1,0 +1,14 @@
+{{- if and .Values.podDisruptionBudget.enabled (gt (int .Values.replicaCount) 1) }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  labels:
+{{ include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 4 }}
+  name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager-pdb" "context" .) }}
+  namespace: {{ .Release.Namespace }}
+spec:
+  maxUnavailable: {{ .Values.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+{{ include "k8s-operator-hermes-agent.controllerManagerSelectorLabels" . | nindent 6 }}
+{{- end }}

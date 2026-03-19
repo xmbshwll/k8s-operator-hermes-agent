@@ -37,6 +37,18 @@
         "required": ["name"]
       }
     },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "maxUnavailable": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": ["enabled", "maxUnavailable"]
+    },
     "leaderElection": {
       "type": "object",
       "additionalProperties": false,
@@ -235,6 +247,7 @@
     "image",
     "replicaCount",
     "imagePullSecrets",
+    "podDisruptionBudget",
     "leaderElection",
     "serviceAccount",
     "podAnnotations",

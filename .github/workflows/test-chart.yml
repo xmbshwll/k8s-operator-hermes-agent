@@ -89,6 +89,33 @@ jobs:
             grep -F "${expected_line}" "${rendered_chart}"
           done
 
+      - name: Validate PodDisruptionBudget render path for HA installs
+        run: |
+          rendered_chart=/tmp/chart-render-pdb.yaml
+
+          helm template k8s-operator-hermes-agent ./charts/chart \
+            --set replicaCount=2 \
+            --set podDisruptionBudget.enabled=true > "${rendered_chart}"
+
+          for expected_line in \
+            "kind: PodDisruptionBudget" \
+            "name: k8s-operator-hermes-agent-controller-manager-pdb" \
+            "maxUnavailable: 1"; do
+            grep -F "${expected_line}" "${rendered_chart}"
+          done
+
+      - name: Validate PodDisruptionBudget stays disabled for single-replica installs
+        run: |
+          rendered_chart=/tmp/chart-render-pdb-single.yaml
+
+          helm template k8s-operator-hermes-agent ./charts/chart \
+            --set podDisruptionBudget.enabled=true > "${rendered_chart}"
+
+          if grep -Fq "kind: PodDisruptionBudget" "${rendered_chart}"; then
+            echo "PodDisruptionBudget should not render for single-replica installs" >&2
+            exit 1
+          fi
+
       - name: Validate observability resources stay disabled by default
         run: |
           rendered_chart=/tmp/chart-render-defaults.yaml

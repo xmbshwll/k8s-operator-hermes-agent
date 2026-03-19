@@ -81,6 +81,23 @@ imagePullSecrets:
 
 Optional pull secrets for the controller-manager pod.
 
+### `podDisruptionBudget`
+
+```yaml
+podDisruptionBudget:
+  enabled: false
+  maxUnavailable: 1
+```
+
+Optional `PodDisruptionBudget` for the controller-manager Deployment.
+The chart only renders it when both of these are true:
+- `podDisruptionBudget.enabled=true`
+- `replicaCount > 1`
+
+That keeps the default single-replica install safe and avoids creating a misleading PDB that would only block voluntary disruption without improving availability.
+For HA installs, keep leader election enabled and raise `replicaCount` above `1` before turning the PDB on.
+The chart currently uses `maxUnavailable` because it fits the controller-manager leader-election model and scales cleanly across small multi-replica installs.
+
 ### `leaderElection`
 
 ```yaml
