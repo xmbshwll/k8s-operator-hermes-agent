@@ -8,6 +8,7 @@ container_id=""
 
 cleanup() {
   if [[ -n "$container_id" ]]; then
+    docker exec -u 0 "$container_id" sh -lc 'chmod -R a+rwX /data/hermes || true' >/dev/null 2>&1 || true
     docker rm -f "$container_id" >/dev/null 2>&1 || true
   fi
   rm -rf "$workdir"
