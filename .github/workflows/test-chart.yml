@@ -29,11 +29,13 @@ jobs:
       - name: Create kind cluster
         run: kind create cluster
 
-      - name: Prepare k8s-operator-hermes-agent
+      - name: Prepare k8s-operator-hermes-agent images
         run: |
           go mod tidy
           make docker-build IMG=controller:latest
+          docker build -t example.com/hermes-agent-e2e:v0.0.1 ./test/e2e/testdata/hermes-runtime
           kind load docker-image controller:latest
+          kind load docker-image example.com/hermes-agent-e2e:v0.0.1
 
       - name: Install Helm
         run: make install-helm
@@ -57,3 +59,51 @@ jobs:
 
       - name: Check Helm release status
         run: make helm-status
+
+      - name: Validate real HermesAgent flow through Helm install
+        run: |
+          kubectl create namespace hermes-chart-e2e
+          kubectl label --overwrite namespace hermes-chart-e2e pod-security.kubernetes.io/enforce=restricted
+
+          sed \
+            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-e2e.yaml
+
+          kubectl apply -n hermes-chart-e2e -f /tmp/hermesagent-chart-e2e.yaml
+          kubectl wait -n hermes-chart-e2e --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
+          kubectl rollout status -n hermes-chart-e2e statefulset/hermesagent-sample --timeout=5m
+
+      - name: Validate webhook rejection path
+        run: |
+          cat <<'EOF' >/tmp/hermesagent-invalid.yaml
+          apiVersion: hermes.nous.ai/v1alpha1
+          kind: HermesAgent
+          metadata:
+            name: hermesagent-invalid
+            namespace: hermes-chart-e2e
+          spec:
+            image:
+              repository: example.com/hermes-agent-e2e
+            config:
+              raw: |
+                model: anthropic/claude-opus-4.1
+              configMapRef:
+                name: shared-config
+                key: config.yaml
+          EOF
+
+          set +e
+          output=$(kubectl apply -f /tmp/hermesagent-invalid.yaml 2>&1)
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            echo "expected invalid HermesAgent admission to fail" >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$output"
+          printf '%s' "$output" | grep -F "raw and configMapRef are mutually exclusive"
+
+          kubectl delete namespace hermes-chart-e2e --wait=true --timeout=2m

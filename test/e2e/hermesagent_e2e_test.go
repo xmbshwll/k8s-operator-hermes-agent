@@ -18,13 +18,10 @@ import (
 	"github.com/xmbshwll/k8s-operator-hermes-agent/test/utils"
 )
 
-const (
-	hermesAgentName      = "hermesagent-sample"
-	hermesAgentNamespace = "hermes-e2e"
-)
+const hermesAgentNamespace = "hermes-e2e"
 
 var _ = Describe("HermesAgent end-to-end", Ordered, func() {
-	var manifestPath string
+	var sampleManifestPath string
 
 	BeforeAll(func() {
 		By("ensuring the manager namespace exists")
@@ -56,15 +53,15 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		}, 3*time.Minute, time.Second).Should(Succeed())
 
 		By("creating a namespace for HermesAgent validation")
-		_, err = kubectl("create", "ns", hermesAgentNamespace)
+			_, err = kubectl("create", "ns", hermesAgentNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("rendering the sample HermesAgent with the end-to-end runtime image")
-		manifestPath, err = renderHermesSampleManifest()
+		sampleManifestPath, err = renderSampleManifest("config/samples/hermes_v1alpha1_hermesagent.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
 		By("applying the sample HermesAgent")
-		_, err = kubectl("apply", "-n", hermesAgentNamespace, "-f", manifestPath)
+		_, err = kubectl("apply", "-n", hermesAgentNamespace, "-f", sampleManifestPath)
 		Expect(err).NotTo(HaveOccurred())
 	})
 
@@ -84,38 +81,37 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		By("removing cert-manager")
 		utils.UninstallCertManager()
 
-		if manifestPath != "" {
-			_ = os.Remove(manifestPath)
+		if sampleManifestPath != "" {
+			_ = os.Remove(sampleManifestPath)
 		}
 	})
 
 	It("reconciles the sample HermesAgent to ready", func() {
+		name := "hermesagent-sample"
+
 		By("waiting for the HermesAgent PVC to bind")
 		Eventually(func(g Gomega) {
-			phase, err := kubectl("get", "pvc", pvcName(), "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+			phase, err := kubectl("get", "pvc", pvcName(name), "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(strings.TrimSpace(phase)).To(Equal("Bound"))
 		}, 5*time.Minute, time.Second).Should(Succeed())
 
 		By("waiting for the HermesAgent StatefulSet to become ready")
-			_, err := kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", hermesAgentName), "-n", hermesAgentNamespace, "--timeout=5m")
+		_, err := kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the HermesAgent status to report Ready")
-		Eventually(func(g Gomega) {
-			phase, err := kubectl("get", "hermesagent", hermesAgentName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(strings.TrimSpace(phase)).To(Equal("Ready"))
-		}, 5*time.Minute, time.Second).Should(Succeed())
+		waitForAgentPhase(name, "Ready")
 
 		By("verifying the managed pod is ready and writing state to the PVC")
-		waitForPodReady(statefulSetPodName())
-		bootCount := readBootCount(statefulSetPodName())
+		waitForPodReady(statefulSetPodName(name))
+		bootCount := readBootCount(statefulSetPodName(name))
 		Expect(bootCount).To(BeNumerically(">=", 1))
 	})
 
 	It("preserves Hermes state across a StatefulSet pod restart", func() {
-		podName := statefulSetPodName()
+		name := "hermesagent-sample"
+		podName := statefulSetPodName(name)
 		beforeRestart := readBootCount(podName)
 		beforeUID := podUID(podName)
 
@@ -136,18 +132,19 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		Expect(afterRestart).To(BeNumerically(">", beforeRestart))
 	})
 
-	It("rolls out the workload after a config update", func() {
-		podName := statefulSetPodName()
+	It("rolls out the workload after an inline config update", func() {
+		name := "hermesagent-sample"
+		podName := statefulSetPodName(name)
 		beforeUID := podUID(podName)
 		updatedConfig := "model: openai/gpt-4.1-mini\nterminal:\n  backend: local\n"
 		patch := fmt.Sprintf(`{"spec":{"config":{"raw":%q}}}`, updatedConfig)
 
 		By("patching the HermesAgent config")
-		_, err := kubectl("patch", "hermesagent", hermesAgentName, "-n", hermesAgentNamespace, "--type=merge", "-p", patch)
+		_, err := kubectl("patch", "hermesagent", name, "-n", hermesAgentNamespace, "--type=merge", "-p", patch)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the StatefulSet to complete the rollout")
-		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", hermesAgentName), "-n", hermesAgentNamespace, "--timeout=5m")
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
 		Expect(err).NotTo(HaveOccurred())
 
 		By("waiting for the pod to be recreated with the new config")
@@ -166,36 +163,309 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
 		By("verifying the HermesAgent reports ready after the rollout")
+		waitForAgentPhase(name, "Ready")
+	})
+
+	It("rejects invalid HermesAgent specs through the webhook", func() {
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: invalid-mixed
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+    configMapRef:
+      name: shared-config
+      key: config.yaml
+`, hermesAgentNamespace, hermesRuntimeImage))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+
+		output, err := kubectl("apply", "-f", manifest)
+		Expect(err).To(HaveOccurred())
+		Expect(output).To(ContainSubstring("raw and configMapRef are mutually exclusive"))
+	})
+
+	It("surfaces missing referenced config through status and events", func() {
+		name := "hermesagent-missing-ref"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    configMapRef:
+      name: missing-config
+      key: config.yaml
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+`, name, hermesAgentNamespace, hermesRuntimeImage))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the HermesAgent to report a config error")
 		Eventually(func(g Gomega) {
-			phase, err := kubectl("get", "hermesagent", hermesAgentName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+			reason, err := kubectl("get", "hermesagent", name, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='ConfigReady')].reason}")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(strings.TrimSpace(phase)).To(Equal("Ready"))
+			g.Expect(strings.TrimSpace(reason)).To(Equal("MissingReferencedInput"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("verifying the warning event is emitted")
+		Eventually(func(g Gomega) {
+			reason, err := kubectl("get", "events", "-n", hermesAgentNamespace, "--field-selector", fmt.Sprintf("involvedObject.kind=HermesAgent,involvedObject.name=%s,reason=MissingReferencedInput", name), "-o", "jsonpath={.items[0].reason}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(reason)).To(Equal("MissingReferencedInput"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+	})
+
+	It("rolls out after referenced ConfigMap updates", func() {
+		name := "hermesagent-configmap-ref"
+		configMapName := "hermesagent-configmap-ref-config"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: %s
+  namespace: %s
+data:
+  config.yaml: |
+    model: anthropic/claude-opus-4.1
+    terminal:
+      backend: local
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    configMapRef:
+      name: %s
+      key: config.yaml
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+`, configMapName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, configMapName))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the referenced-config HermesAgent to become ready")
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+
+		podName := statefulSetPodName(name)
+		beforeUID := podUID(podName)
+
+		By("updating the referenced ConfigMap")
+		patch := `{"data":{"config.yaml":"model: openai/gpt-4.1-mini\nterminal:\n  backend: local\n"}}`
+		_, err = kubectl("patch", "configmap", configMapName, "-n", hermesAgentNamespace, "--type=merge", "-p", patch)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the rollout triggered by the referenced ConfigMap")
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func(g Gomega) {
+			newUID, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(newUID)).NotTo(Equal(beforeUID))
 		}, 5*time.Minute, time.Second).Should(Succeed())
+		waitForPodReady(podName)
+
+		By("verifying the mounted file uses the updated ConfigMap content")
+		Eventually(func(g Gomega) {
+			config, err := kubectl("exec", "-n", hermesAgentNamespace, podName, "--", "cat", "/data/hermes/config.yaml")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(config).To(ContainSubstring("model: openai/gpt-4.1-mini"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+	})
+
+	It("rolls out after Secret-backed env and mounted secret updates", func() {
+		name := "hermesagent-secret-rollout"
+		envSecretName := "hermesagent-secret-rollout-env"
+		mountSecretName := "hermesagent-secret-rollout-files"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+stringData:
+  OPENROUTER_API_KEY: sk-initial
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+stringData:
+  id_ed25519: |
+    initial-key
+  known_hosts: |
+    github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAinitial
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  envFrom:
+    - secretRef:
+        name: %s
+  secretRefs:
+    - name: %s
+`, envSecretName, hermesAgentNamespace, mountSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, envSecretName, mountSecretName))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+
+		podName := statefulSetPodName(name)
+		beforeUID := podUID(podName)
+
+		By("updating both the envFrom secret and the mounted secret")
+		_, err = kubectl("patch", "secret", envSecretName, "-n", hermesAgentNamespace, "--type=merge", "-p", `{"stringData":{"OPENROUTER_API_KEY":"sk-updated"}}`)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("patch", "secret", mountSecretName, "-n", hermesAgentNamespace, "--type=merge", "-p", `{"stringData":{"id_ed25519":"updated-key","known_hosts":"github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAupdated"}}`)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("waiting for the rollout triggered by the secret updates")
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(func(g Gomega) {
+			newUID, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(newUID)).NotTo(Equal(beforeUID))
+		}, 5*time.Minute, time.Second).Should(Succeed())
+		waitForPodReady(podName)
+	})
+
+	It("creates and removes optional Service and NetworkPolicy resources", func() {
+		name := "hermesagent-optional-resources"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  service:
+    enabled: true
+    port: 8080
+  networkPolicy:
+    enabled: true
+`, name, hermesAgentNamespace, hermesRuntimeImage))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+
+		By("verifying optional resources are created")
+		Eventually(func(g Gomega) {
+			_, err := kubectl("get", "service", name, "-n", hermesAgentNamespace)
+			g.Expect(err).NotTo(HaveOccurred())
+			_, err = kubectl("get", "networkpolicy", name, "-n", hermesAgentNamespace)
+			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("disabling the optional resources")
+		_, err = kubectl("patch", "hermesagent", name, "-n", hermesAgentNamespace, "--type=merge", "-p", `{"spec":{"service":{"enabled":false},"networkPolicy":{"enabled":false}}}`)
+		Expect(err).NotTo(HaveOccurred())
+
+		By("verifying the owned resources are deleted")
+		Eventually(func(g Gomega) {
+			_, err := kubectl("get", "service", name, "-n", hermesAgentNamespace)
+			g.Expect(err).To(HaveOccurred())
+			_, err = kubectl("get", "networkpolicy", name, "-n", hermesAgentNamespace)
+			g.Expect(err).To(HaveOccurred())
+		}, 2*time.Minute, time.Second).Should(Succeed())
 	})
 })
 
-func renderHermesSampleManifest() (string, error) {
+func renderSampleManifest(relativePath string) (string, error) {
 	projectDir, err := utils.GetProjectDir()
 	if err != nil {
 		return "", err
 	}
 
-	samplePath := filepath.Join(projectDir, "config", "samples", "hermes_v1alpha1_hermesagent.yaml")
-	content, err := os.ReadFile(samplePath)
+	content, err := os.ReadFile(filepath.Join(projectDir, relativePath))
 	if err != nil {
 		return "", err
 	}
 
-	rendered := strings.Replace(string(content), "repository: ghcr.io/example/hermes-agent", "repository: example.com/hermes-agent-e2e", 1)
+	rendered := strings.Replace(string(content), "repository: ghcr.io/example/hermes-agent", fmt.Sprintf("repository: %s", hermesRuntimeImage), 1)
 	rendered = strings.Replace(rendered, "tag: gateway-core", "tag: v0.0.1", 1)
+	return renderManifest(rendered)
+}
 
+func renderManifest(content string) (string, error) {
 	file, err := os.CreateTemp("", "hermesagent-e2e-*.yaml")
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
 
-	if _, err := file.WriteString(rendered); err != nil {
+	if _, err := file.WriteString(strings.TrimSpace(content) + "\n"); err != nil {
 		return "", err
 	}
 	return file.Name(), nil
@@ -205,12 +475,12 @@ func kubectl(args ...string) (string, error) {
 	return utils.Run(exec.Command("kubectl", args...))
 }
 
-func statefulSetPodName() string {
-	return fmt.Sprintf("%s-0", hermesAgentName)
+func statefulSetPodName(name string) string {
+	return fmt.Sprintf("%s-0", name)
 }
 
-func pvcName() string {
-	return fmt.Sprintf("%s-data", hermesAgentName)
+func pvcName(name string) string {
+	return fmt.Sprintf("%s-data", name)
 }
 
 func waitForPodReady(podName string) {
@@ -218,6 +488,14 @@ func waitForPodReady(podName string) {
 		status, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
 		g.Expect(err).NotTo(HaveOccurred())
 		g.Expect(strings.TrimSpace(status)).To(Equal("True"))
+	}, 5*time.Minute, time.Second).Should(Succeed())
+}
+
+func waitForAgentPhase(name, phase string) {
+	Eventually(func(g Gomega) {
+		currentPhase, err := kubectl("get", "hermesagent", name, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(currentPhase)).To(Equal(phase))
 	}, 5*time.Minute, time.Second).Should(Succeed())
 }
 
