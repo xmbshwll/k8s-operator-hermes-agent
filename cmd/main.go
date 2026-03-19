@@ -191,8 +191,9 @@ func main() {
 	}
 
 	if err := (&controller.HermesAgentReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		//nolint:staticcheck // controller-runtime still exposes the legacy recorder shape our reconciler uses
 		Recorder: mgr.GetEventRecorderFor("hermesagent-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "HermesAgent")

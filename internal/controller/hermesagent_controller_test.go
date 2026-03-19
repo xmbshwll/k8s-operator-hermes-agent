@@ -1121,7 +1121,7 @@ func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing
 				LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
 				Key:                  "config.yaml",
 			}},
-			Terminal:      hermesv1alpha1.HermesAgentTerminalSpec{Backend: "local"},
+			Terminal:      hermesv1alpha1.HermesAgentTerminalSpec{Backend: terminalBackendLocal},
 			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
 		},
 	}
@@ -1173,7 +1173,7 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 				PullPolicy: corev1.PullIfNotPresent,
 			},
 			Config:   hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Terminal: hermesv1alpha1.HermesAgentTerminalSpec{Backend: "ssh"},
+			Terminal: hermesv1alpha1.HermesAgentTerminalSpec{Backend: terminalBackendSSH},
 			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{
 				Enabled:            &enabled,
 				AdditionalTCPPorts: []int32{8443},
@@ -1951,6 +1951,6 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 		t.Fatal("expected lastReconcileTime to remain set after second reconcile")
 	}
 	if !updatedAgent.Status.LastReconcileTime.Equal(firstReconcileTime) {
-		t.Fatalf("expected steady-state reconcile not to patch status, got lastReconcileTime %s after %s", updatedAgent.Status.LastReconcileTime.Time.Format(time.RFC3339Nano), firstReconcileTime.Time.Format(time.RFC3339Nano))
+		t.Fatalf("expected steady-state reconcile not to patch status, got lastReconcileTime %s after %s", updatedAgent.Status.LastReconcileTime.Format(time.RFC3339Nano), firstReconcileTime.Format(time.RFC3339Nano))
 	}
 }

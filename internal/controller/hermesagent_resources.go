@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"path"
-	"sort"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -45,6 +45,8 @@ const (
 	probeTimeoutSeconds     = int32(5)
 	probeFailureThreshold   = int32(3)
 	livenessInitialDelay    = int32(15)
+	terminalBackendLocal    = "local"
+	terminalBackendSSH      = "ssh"
 )
 
 type resolvedConfigFile struct {
@@ -419,7 +421,7 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend strin
 
 	defaultTCPPorts := networkPolicyPortSet(networkPolicyDNSPort, networkPolicyHTTPPort, networkPolicyHTTPSPort)
 	defaultUDPPorts := networkPolicyPortSet(networkPolicyDNSPort)
-	if terminalBackend == "ssh" {
+	if terminalBackend == terminalBackendSSH {
 		defaultTCPPorts[networkPolicySSHPort] = struct{}{}
 		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicySSHPort})...))
 	}
@@ -1038,7 +1040,7 @@ func additionalNetworkPolicyPorts(ports []int32, existing map[int32]struct{}) []
 	for port := range unique {
 		ordered = append(ordered, port)
 	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
+	slices.Sort(ordered)
 	return ordered
 }
 

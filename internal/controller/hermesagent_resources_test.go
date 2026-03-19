@@ -713,7 +713,7 @@ func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
-	agent.Spec.Terminal.Backend = "ssh"
+	agent.Spec.Terminal.Backend = terminalBackendSSH
 
 	networkPolicy := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputState{}))
 	if len(networkPolicy.Spec.Egress) != 3 {
@@ -731,7 +731,7 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
-	agent.Spec.Terminal.Backend = "ssh"
+	agent.Spec.Terminal.Backend = terminalBackendSSH
 	agent.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443, networkPolicyHTTPSPort, 8081, networkPolicySSHPort}
 	agent.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478, networkPolicyDNSPort}
 
@@ -756,18 +756,18 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 
 func TestEffectiveTerminalBackendUsesInlineConfigOverSpec(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
-	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n"
 
 	backend := effectiveTerminalBackend(agent, referencedInputState{})
-	if backend != "ssh" {
+	if backend != terminalBackendSSH {
 		t.Fatalf("expected inline config terminal backend ssh, got %q", backend)
 	}
 }
 
 func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
-	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 		Key:                  "config.yaml",
@@ -779,14 +779,14 @@ func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
 	}
 
 	backend := effectiveTerminalBackend(agent, referencedInputs)
-	if backend != "ssh" {
+	if backend != terminalBackendSSH {
 		t.Fatalf("expected referenced config terminal backend ssh, got %q", backend)
 	}
 }
 
 func TestEffectiveTerminalBackendUsesReferencedSecretConfigOverSpec(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
-	agent.Spec.Terminal.Backend = "local"
+	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
 		Key:                  "config.yaml",
@@ -798,18 +798,18 @@ func TestEffectiveTerminalBackendUsesReferencedSecretConfigOverSpec(t *testing.T
 	}
 
 	backend := effectiveTerminalBackend(agent, referencedInputs)
-	if backend != "ssh" {
+	if backend != terminalBackendSSH {
 		t.Fatalf("expected referenced secret config terminal backend ssh, got %q", backend)
 	}
 }
 
 func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
-	agent.Spec.Terminal.Backend = "ssh"
+	agent.Spec.Terminal.Backend = terminalBackendSSH
 	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
 
 	backend := effectiveTerminalBackend(agent, referencedInputState{})
-	if backend != "ssh" {
+	if backend != terminalBackendSSH {
 		t.Fatalf("expected fallback terminal backend ssh, got %q", backend)
 	}
 }

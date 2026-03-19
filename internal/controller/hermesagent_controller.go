@@ -20,7 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sort"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -202,142 +202,143 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, agent *hermesv1alpha1.HermesAgent) (referencedInputState, error) {
 	referencedInputs := referencedInputState{}
 
-	appendConfigFileSnapshot := func(source hermesv1alpha1.HermesAgentConfigSource) error {
+	if err := r.appendConfigFileSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.Config, agent.Spec.GatewayConfig); err != nil {
+		return referencedInputs, err
+	}
+	if err := r.appendFileMountSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.FileMounts); err != nil {
+		return referencedInputs, err
+	}
+	if err := r.appendEnvValueSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.Env); err != nil {
+		return referencedInputs, err
+	}
+	if err := r.appendEnvFromSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.EnvFrom); err != nil {
+		return referencedInputs, err
+	}
+	if err := r.appendSecretRefSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.SecretRefs); err != nil {
+		return referencedInputs, err
+	}
+
+	return referencedInputs, nil
+}
+
+func (r *HermesAgentReconciler) appendConfigFileSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, sources ...hermesv1alpha1.HermesAgentConfigSource) error {
+	for _, source := range sources {
 		if source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" {
-			configMap := &corev1.ConfigMap{}
-			err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+			configMap, err := r.getConfigMapForReference(ctx, namespace, source.ConfigMapRef.Name)
 			if err != nil {
-				if apierrors.IsNotFound(err) {
-					referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, nil))
-					return nil
-				}
 				return err
 			}
-
 			referencedInputs.FileRefs = append(referencedInputs.FileRefs, newConfigMapFileSnapshot(source.ConfigMapRef.Name, source.ConfigMapRef.Key, configMap))
-			return nil
 		}
-		if source.SecretRef == nil || source.SecretRef.Name == "" {
-			return nil
-		}
-
-		secret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: source.SecretRef.Name, Namespace: agent.Namespace}, secret)
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				referencedInputs.FileRefs = append(referencedInputs.FileRefs, newSecretFileSnapshot(source.SecretRef.Name, source.SecretRef.Key, nil))
-				return nil
-			}
-			return err
-		}
-
-		referencedInputs.FileRefs = append(referencedInputs.FileRefs, newSecretFileSnapshot(source.SecretRef.Name, source.SecretRef.Key, secret))
-		return nil
-	}
-
-	if err := appendConfigFileSnapshot(agent.Spec.Config); err != nil {
-		return referencedInputs, err
-	}
-	if err := appendConfigFileSnapshot(agent.Spec.GatewayConfig); err != nil {
-		return referencedInputs, err
-	}
-
-	for _, fileMount := range agent.Spec.FileMounts {
-		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
-			configMap := &corev1.ConfigMap{}
-			err := r.Get(ctx, client.ObjectKey{Name: fileMount.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+		if source.SecretRef != nil && source.SecretRef.Name != "" {
+			secret, err := r.getSecretForReference(ctx, namespace, source.SecretRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				configMap = nil
+				return err
+			}
+			referencedInputs.FileRefs = append(referencedInputs.FileRefs, newSecretFileSnapshot(source.SecretRef.Name, source.SecretRef.Key, secret))
+		}
+	}
+	return nil
+}
+
+func (r *HermesAgentReconciler) appendFileMountSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, fileMounts []hermesv1alpha1.HermesAgentFileMountSpec) error {
+	for _, fileMount := range fileMounts {
+		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
+			configMap, err := r.getConfigMapForReference(ctx, namespace, fileMount.ConfigMapRef.Name)
+			if err != nil {
+				return err
 			}
 			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newConfigMapProjectionSnapshot(fileMount.ConfigMapRef.Name, fileMount.Items, configMap))
 			continue
 		}
 		if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
-			secret := &corev1.Secret{}
-			err := r.Get(ctx, client.ObjectKey{Name: fileMount.SecretRef.Name, Namespace: agent.Namespace}, secret)
+			secret, err := r.getSecretForReference(ctx, namespace, fileMount.SecretRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				secret = nil
+				return err
 			}
 			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newSecretProjectionSnapshot(fileMount.SecretRef.Name, fileMount.Items, secret))
 		}
 	}
+	return nil
+}
 
-	for _, envVar := range agent.Spec.Env {
+func (r *HermesAgentReconciler) appendEnvValueSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, envVars []corev1.EnvVar) error {
+	for _, envVar := range envVars {
 		if envVar.ValueFrom == nil {
 			continue
 		}
 		if envVar.ValueFrom.ConfigMapKeyRef != nil && envVar.ValueFrom.ConfigMapKeyRef.Name != "" {
-			configMap := &corev1.ConfigMap{}
-			err := r.Get(ctx, client.ObjectKey{Name: envVar.ValueFrom.ConfigMapKeyRef.Name, Namespace: agent.Namespace}, configMap)
+			configMap, err := r.getConfigMapForReference(ctx, namespace, envVar.ValueFrom.ConfigMapKeyRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				configMap = nil
+				return err
 			}
 			referencedInputs.EnvValueRefs = append(referencedInputs.EnvValueRefs, newConfigMapKeySnapshot(envVar.ValueFrom.ConfigMapKeyRef.Name, envVar.ValueFrom.ConfigMapKeyRef.Key, optionalValue(envVar.ValueFrom.ConfigMapKeyRef.Optional), configMap))
 		}
 		if envVar.ValueFrom.SecretKeyRef != nil && envVar.ValueFrom.SecretKeyRef.Name != "" {
-			secret := &corev1.Secret{}
-			err := r.Get(ctx, client.ObjectKey{Name: envVar.ValueFrom.SecretKeyRef.Name, Namespace: agent.Namespace}, secret)
+			secret, err := r.getSecretForReference(ctx, namespace, envVar.ValueFrom.SecretKeyRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				secret = nil
+				return err
 			}
 			referencedInputs.EnvValueRefs = append(referencedInputs.EnvValueRefs, newSecretKeySnapshot(envVar.ValueFrom.SecretKeyRef.Name, envVar.ValueFrom.SecretKeyRef.Key, optionalValue(envVar.ValueFrom.SecretKeyRef.Optional), secret))
 		}
 	}
+	return nil
+}
 
-	for _, source := range agent.Spec.EnvFrom {
+func (r *HermesAgentReconciler) appendEnvFromSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, sources []corev1.EnvFromSource) error {
+	for _, source := range sources {
 		if source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" {
-			configMap := &corev1.ConfigMap{}
-			err := r.Get(ctx, client.ObjectKey{Name: source.ConfigMapRef.Name, Namespace: agent.Namespace}, configMap)
+			configMap, err := r.getConfigMapForReference(ctx, namespace, source.ConfigMapRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				configMap = nil
+				return err
 			}
 			referencedInputs.EnvFrom = append(referencedInputs.EnvFrom, newConfigMapEnvFromSnapshot(source.ConfigMapRef.Name, optionalValue(source.ConfigMapRef.Optional), configMap))
 		}
 		if source.SecretRef != nil && source.SecretRef.Name != "" {
-			secret := &corev1.Secret{}
-			err := r.Get(ctx, client.ObjectKey{Name: source.SecretRef.Name, Namespace: agent.Namespace}, secret)
+			secret, err := r.getSecretForReference(ctx, namespace, source.SecretRef.Name)
 			if err != nil {
-				if !apierrors.IsNotFound(err) {
-					return referencedInputs, err
-				}
-				secret = nil
+				return err
 			}
 			referencedInputs.EnvFrom = append(referencedInputs.EnvFrom, newSecretSnapshot(source.SecretRef.Name, optionalValue(source.SecretRef.Optional), secret))
 		}
 	}
+	return nil
+}
 
-	for _, secretRef := range agent.Spec.SecretRefs {
+func (r *HermesAgentReconciler) appendSecretRefSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, secretRefs []corev1.LocalObjectReference) error {
+	for _, secretRef := range secretRefs {
 		if secretRef.Name == "" {
 			continue
 		}
-
-		secret := &corev1.Secret{}
-		err := r.Get(ctx, client.ObjectKey{Name: secretRef.Name, Namespace: agent.Namespace}, secret)
+		secret, err := r.getSecretForReference(ctx, namespace, secretRef.Name)
 		if err != nil {
-			if !apierrors.IsNotFound(err) {
-				return referencedInputs, err
-			}
-			secret = nil
+			return err
 		}
 		referencedInputs.SecretRefs = append(referencedInputs.SecretRefs, newSecretSnapshot(secretRef.Name, false, secret))
 	}
+	return nil
+}
 
-	return referencedInputs, nil
+func (r *HermesAgentReconciler) getConfigMapForReference(ctx context.Context, namespace, name string) (*corev1.ConfigMap, error) {
+	configMap := &corev1.ConfigMap{}
+	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, configMap); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return configMap, nil
+}
+
+func (r *HermesAgentReconciler) getSecretForReference(ctx context.Context, namespace, name string) (*corev1.Secret, error) {
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return secret, nil
 }
 
 func (r *HermesAgentReconciler) findAgentsForConfigMap(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -567,8 +568,8 @@ func equalPersistentVolumeAccessModes(left, right []corev1.PersistentVolumeAcces
 	}
 	leftCopy := append([]corev1.PersistentVolumeAccessMode{}, left...)
 	rightCopy := append([]corev1.PersistentVolumeAccessMode{}, right...)
-	sort.Slice(leftCopy, func(i, j int) bool { return leftCopy[i] < leftCopy[j] })
-	sort.Slice(rightCopy, func(i, j int) bool { return rightCopy[i] < rightCopy[j] })
+	slices.Sort(leftCopy)
+	slices.Sort(rightCopy)
 	return apiequality.Semantic.DeepEqual(leftCopy, rightCopy)
 }
 
