@@ -43,6 +43,11 @@ Before upgrading:
 
 Do not rely on plain `helm upgrade` by itself for CRD changes, or you can end up with a new controller running against an old CRD schema.
 
+Selector upgrade note:
+- the chart now scopes controller-manager selectors with `app.kubernetes.io/instance` so multiple releases in the same namespace do not cross-select each other's pods
+- if you are upgrading from an older chart revision that used broader selectors, the Deployment selector change is immutable in Kubernetes
+- for that one-time transition, use `helm upgrade --force` after applying the CRD bundle first so Helm can replace the Deployment cleanly
+
 ## Values
 
 The chart now includes `values.schema.json`, so Helm validates the supported values surface before rendering or installing.
@@ -246,6 +251,7 @@ k8s-operator-hermes-agent-system
 ```
 
 You can install into another namespace, but keep cert-manager and webhook certificate wiring in mind.
+The chart now release-scopes controller-manager selectors, so multiple releases in the same namespace do not share metrics, webhook, or NetworkPolicy targeting by accident.
 
 ### After install
 

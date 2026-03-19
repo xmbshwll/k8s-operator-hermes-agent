@@ -2,19 +2,14 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   labels:
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
-    app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-    helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    control-plane: controller-manager
+{{ include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 4 }}
   name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "controller-manager" "context" $) }}
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-      control-plane: controller-manager
+{{ include "k8s-operator-hermes-agent.controllerManagerSelectorLabels" . | nindent 6 }}
   template:
     metadata:
       annotations:
@@ -23,11 +18,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       labels:
-        app.kubernetes.io/name: {{ include "k8s-operator-hermes-agent.name" . }}
-        helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version | replace "+" "_" }}
-        app.kubernetes.io/instance: {{ .Release.Name }}
-        app.kubernetes.io/managed-by: {{ .Release.Service }}
-        control-plane: controller-manager
+{{ include "k8s-operator-hermes-agent.controllerManagerLabels" . | nindent 8 }}
         {{- with .Values.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
