@@ -256,9 +256,9 @@ spec:
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `enabled` | bool | `true` | When false, Hermes uses `emptyDir` |
-| `size` | string | `10Gi` | Must be a valid Kubernetes quantity greater than zero |
-| `accessModes` | array | `ReadWriteOnce` | Standard PVC access modes |
-| `storageClassName` | string | unset | Optional storage class override |
+| `size` | string | `10Gi` | Must be a valid Kubernetes quantity greater than zero; storage request updates are reconciled onto the existing PVC |
+| `accessModes` | array | `ReadWriteOnce` | Standard PVC access modes; changing this after the PVC exists requires claim recreation |
+| `storageClassName` | string | unset | Optional storage class override; changing this after the PVC exists requires claim recreation |
 
 ## Terminal
 

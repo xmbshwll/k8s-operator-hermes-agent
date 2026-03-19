@@ -1229,6 +1229,124 @@ func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 	requireRecordedEvent(t, recorder, corev1.EventTypeNormal, "PersistentVolumeClaimPending", "waiting to bind")
 }
 
+func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	quantity := resourceMustParse(t, "5Gi")
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(testAgentName), Namespace: testNamespace},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: quantity}},
+		},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-size-update"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+				Size:        testPersistentVolumeSize,
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			}},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, pvc).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme, Recorder: record.NewFakeRecorder(10)}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	updatedPVC := &corev1.PersistentVolumeClaim{}
+	if err := k8sClient.Get(context.Background(), client.ObjectKeyFromObject(pvc), updatedPVC); err != nil {
+		t.Fatalf("get PVC returned error: %v", err)
+	}
+	updatedQuantity := updatedPVC.Spec.Resources.Requests[corev1.ResourceStorage]
+	if updatedQuantity.Cmp(resourceMustParse(t, testPersistentVolumeSize)) != 0 {
+		t.Fatalf("expected PVC storage request %s, got %s", testPersistentVolumeSize, updatedQuantity.String())
+	}
+}
+
+func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	storageClassName := "fast-ssd"
+	pvc := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(testAgentName), Namespace: testNamespace},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+			StorageClassName: &storageClassName,
+			Resources: corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{
+				corev1.ResourceStorage: resourceMustParse(t, testPersistentVolumeSize),
+			}},
+		},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-drift"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+				Size:        testPersistentVolumeSize,
+				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
+			}},
+		},
+	}
+
+	recorder := record.NewFakeRecorder(10)
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, pvc).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme, Recorder: recorder}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err == nil {
+		t.Fatal("expected reconcile to fail when immutable PVC fields drift")
+	}
+
+	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "PersistentVolumeClaimSpecDrift", "must be recreated", "spec.storage.persistence.accessModes", "spec.storage.persistence.storageClassName")
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	requireStatusCondition(t, updatedAgent.Status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
+	requireStatusCondition(t, updatedAgent.Status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
+}
+
 func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
@@ -1485,7 +1603,10 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	}
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(agent.Name), Namespace: agent.Namespace},
-		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 	}
 	oneReplica := int32(1)
 	statefulSet := &appsv1.StatefulSet{
@@ -1560,7 +1681,10 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 	}
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(agent.Name), Namespace: agent.Namespace},
-		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+		Spec: corev1.PersistentVolumeClaimSpec{
+			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+		},
+		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 	}
 	oneReplica := int32(1)
 	statefulSet := &appsv1.StatefulSet{

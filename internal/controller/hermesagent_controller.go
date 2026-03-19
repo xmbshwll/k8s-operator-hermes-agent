@@ -18,7 +18,9 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -462,16 +464,65 @@ func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Conte
 	persistentVolumeClaim.Namespace = agent.Namespace
 	persistentVolumeClaim.Name = desired.Name
 
+	exists := true
+	if err := r.Get(ctx, client.ObjectKeyFromObject(persistentVolumeClaim), persistentVolumeClaim); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		exists = false
+	}
+
 	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, persistentVolumeClaim, func() error {
 		persistentVolumeClaim.Labels = mergeStringMaps(persistentVolumeClaim.Labels, desired.Labels)
-		if persistentVolumeClaim.CreationTimestamp.IsZero() {
+		if !exists {
 			persistentVolumeClaim.Spec = desired.Spec
 		} else {
+			if drift := persistentVolumeClaimImmutableFieldDrift(persistentVolumeClaim.Spec, desired.Spec); len(drift) > 0 {
+				return &persistentVolumeClaimSpecDriftError{name: persistentVolumeClaim.Name, fields: drift}
+			}
 			persistentVolumeClaim.Spec.Resources.Requests = desired.Spec.Resources.Requests
 		}
 		return controllerutil.SetControllerReference(agent, persistentVolumeClaim, r.Scheme)
 	})
 	return err
+}
+
+type persistentVolumeClaimSpecDriftError struct {
+	name   string
+	fields []string
+}
+
+func (e *persistentVolumeClaimSpecDriftError) Error() string {
+	return fmt.Sprintf("PersistentVolumeClaim %s must be recreated to apply immutable storage changes: %s", e.name, strings.Join(e.fields, ", "))
+}
+
+func persistentVolumeClaimImmutableFieldDrift(existing, desired corev1.PersistentVolumeClaimSpec) []string {
+	var drift []string
+	if !equalPersistentVolumeAccessModes(existing.AccessModes, desired.AccessModes) {
+		drift = append(drift, "spec.storage.persistence.accessModes")
+	}
+	if !equalOptionalString(existing.StorageClassName, desired.StorageClassName) {
+		drift = append(drift, "spec.storage.persistence.storageClassName")
+	}
+	return drift
+}
+
+func equalPersistentVolumeAccessModes(left, right []corev1.PersistentVolumeAccessMode) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	leftCopy := append([]corev1.PersistentVolumeAccessMode{}, left...)
+	rightCopy := append([]corev1.PersistentVolumeAccessMode{}, right...)
+	sort.Slice(leftCopy, func(i, j int) bool { return leftCopy[i] < leftCopy[j] })
+	sort.Slice(rightCopy, func(i, j int) bool { return rightCopy[i] < rightCopy[j] })
+	return apiequality.Semantic.DeepEqual(leftCopy, rightCopy)
+}
+
+func equalOptionalString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
 }
 
 func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) error {
@@ -644,7 +695,7 @@ func eventForConditionTransition(before, after *hermesv1alpha1.HermesAgentStatus
 
 func eventTypeForCondition(condition *metav1.Condition) string {
 	switch condition.Reason {
-	case "InvalidConfig", "MissingReferencedInput", "ReferencedInputsReadFailed", "ConfigMapReconcileFailed", "PersistentVolumeClaimReconcileFailed", "PersistentVolumeClaimLost", "StatefulSetReconcileFailed", "ServiceReconcileFailed", "NetworkPolicyReconcileFailed":
+	case "InvalidConfig", "MissingReferencedInput", "ReferencedInputsReadFailed", "ConfigMapReconcileFailed", "PersistentVolumeClaimReconcileFailed", "PersistentVolumeClaimSpecDrift", "PersistentVolumeClaimLost", "StatefulSetReconcileFailed", "ServiceReconcileFailed", "NetworkPolicyReconcileFailed":
 		return corev1.EventTypeWarning
 	default:
 		return corev1.EventTypeNormal
@@ -844,6 +895,16 @@ func markPersistenceFailure(status *hermesv1alpha1.HermesAgentStatus, err error)
 	status.ReadyReplicas = 0
 	status.PersistenceBound = false
 	setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
+
+	var driftErr *persistentVolumeClaimSpecDriftError
+	if errors.As(err, &driftErr) {
+		setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift", driftErr.Error())
+		setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "PersistentVolumeClaimSpecDrift", "Workload state is unchanged, but the requested PVC spec cannot be applied in place")
+		setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift", "Hermes persistence does not match the requested immutable PVC settings")
+		status.Phase = phaseStorageError
+		return
+	}
+
 	setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", err.Error())
 	setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, reasonWaitingForPersistence, "Workload is waiting for the Hermes PVC to reconcile")
 	setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimReconcileFailed", "Hermes persistence could not be reconciled")
