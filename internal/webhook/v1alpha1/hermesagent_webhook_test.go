@@ -148,6 +148,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 
 		It("rejects invalid storage size, service port, network policy ports, empty image pull secrets, and invalid file mounts", func() {
 			namespace := newNamespace()
+			invalidMode := int32(0o1000)
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-settings-%d", time.Now().UnixNano()))
 			obj.Spec.Storage.Persistence.Size = "0Gi"
 			obj.Spec.Service.Enabled = true
@@ -162,8 +163,19 @@ var _ = Describe("HermesAgent Webhook", func() {
 			}, {
 				MountPath: "/var/run/hermes/plugins",
 			}, {
-				MountPath: "/var/run/hermes/plugins",
-				SecretRef: &corev1.LocalObjectReference{},
+				MountPath:   "/var/run/hermes/plugins",
+				SecretRef:   &corev1.LocalObjectReference{},
+				DefaultMode: &invalidMode,
+				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+					Path: "../known_hosts",
+				}, {
+					Key:  "known_hosts",
+					Path: "../known_hosts",
+				}, {
+					Key:  "known_hosts",
+					Path: "known_hosts",
+					Mode: &invalidMode,
+				}},
 			}}
 
 			_, err := validator.ValidateCreate(ctx, obj)
@@ -179,6 +191,12 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("either configMapRef or secretRef must be set"))
 			Expect(err.Error()).To(ContainSubstring("duplicates fileMounts[1].mountPath"))
 			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].secretRef.name"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].defaultMode"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].items[0].key"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].items[0].path"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].items[1].path"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].items[2].key"))
+			Expect(err.Error()).To(ContainSubstring("spec.fileMounts[2].items[2].mode"))
 		})
 
 		It("admits terminal backend fallback hints that differ from inline config", func() {
@@ -192,6 +210,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 
 		It("admits a valid HermesAgent", func() {
 			namespace := newNamespace()
+			defaultMode := int32(0o444)
+			privateKeyMode := int32(0o600)
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("valid-%d", time.Now().UnixNano()))
 			obj.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: local\n"
 			obj.Spec.GatewayConfig.Raw = "{}\n"
@@ -202,6 +222,22 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
 				MountPath:    "/var/run/hermes/plugins",
 				ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+					Key:  "plugin.py",
+					Path: "plugin.py",
+				}},
+			}, {
+				MountPath:   "/var/run/hermes/ssh",
+				SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
+				DefaultMode: &defaultMode,
+				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+					Key:  "id_ed25519",
+					Path: "id_ed25519",
+					Mode: &privateKeyMode,
+				}, {
+					Key:  "known_hosts",
+					Path: "known_hosts",
+				}},
 			}}
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478}

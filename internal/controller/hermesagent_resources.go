@@ -72,13 +72,14 @@ type referencedInputState struct {
 }
 
 type referencedObjectSnapshot struct {
-	Kind     string            `json:"kind"`
-	Name     string            `json:"name"`
-	Key      string            `json:"key,omitempty"`
-	Optional bool              `json:"optional,omitempty"`
-	Present  bool              `json:"present"`
-	KeyFound bool              `json:"keyFound,omitempty"`
-	Data     map[string]string `json:"data,omitempty"`
+	Kind        string            `json:"kind"`
+	Name        string            `json:"name"`
+	Key         string            `json:"key,omitempty"`
+	Optional    bool              `json:"optional,omitempty"`
+	Present     bool              `json:"present"`
+	KeyFound    bool              `json:"keyFound,omitempty"`
+	MissingKeys []string          `json:"missingKeys,omitempty"`
+	Data        map[string]string `json:"data,omitempty"`
 }
 
 type podTemplateInputs struct {
@@ -197,6 +198,54 @@ func validateFileMountSpecs(mounts []hermesv1alpha1.HermesAgentFileMountSpec) er
 		if mount.SecretRef != nil && mount.SecretRef.Name == "" {
 			return fmt.Errorf("spec.fileMounts[%d].secretRef.name is required", i)
 		}
+		if err := validateFileModeValue(mount.DefaultMode, fmt.Sprintf("spec.fileMounts[%d].defaultMode", i)); err != nil {
+			return err
+		}
+		seenItemPaths := map[string]int{}
+		seenItemKeys := map[string]int{}
+		for j, item := range mount.Items {
+			if item.Key == "" {
+				return fmt.Errorf("spec.fileMounts[%d].items[%d].key is required", i, j)
+			}
+			if previous, exists := seenItemKeys[item.Key]; exists {
+				return fmt.Errorf("spec.fileMounts[%d].items[%d].key duplicates spec.fileMounts[%d].items[%d].key", i, j, i, previous)
+			}
+			seenItemKeys[item.Key] = j
+			if item.Path == "" {
+				return fmt.Errorf("spec.fileMounts[%d].items[%d].path is required", i, j)
+			}
+			if err := validateFileMountItemPath(item.Path); err != nil {
+				return fmt.Errorf("spec.fileMounts[%d].items[%d].path %s", i, j, err.Error())
+			}
+			if previous, exists := seenItemPaths[item.Path]; exists {
+				return fmt.Errorf("spec.fileMounts[%d].items[%d].path duplicates spec.fileMounts[%d].items[%d].path", i, j, i, previous)
+			}
+			seenItemPaths[item.Path] = j
+			if err := validateFileModeValue(item.Mode, fmt.Sprintf("spec.fileMounts[%d].items[%d].mode", i, j)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func validateFileMountItemPath(value string) error {
+	if path.IsAbs(value) {
+		return fmt.Errorf("must be relative")
+	}
+	clean := path.Clean(value)
+	if clean == "." || clean != value || clean == ".." || strings.HasPrefix(clean, "../") {
+		return fmt.Errorf("must not contain '.' or '..' path segments")
+	}
+	return nil
+}
+
+func validateFileModeValue(mode *int32, fieldName string) error {
+	if mode == nil {
+		return nil
+	}
+	if *mode < 0 || *mode > 0o777 {
+		return fmt.Errorf("%s must be between 0 and 0777", fieldName)
 	}
 	return nil
 }
@@ -255,38 +304,62 @@ func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) 
 	}
 
 	for i, fileMount := range agent.Spec.FileMounts {
-		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
-			volumeName := fmt.Sprintf("file-mount-%d", i)
-			inputs.Volumes = append(inputs.Volumes, corev1.Volume{
-				Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: *fileMount.ConfigMapRef},
-				},
-			})
-			inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
-				Name:      volumeName,
-				MountPath: fileMount.MountPath,
-				ReadOnly:  true,
-			})
+		volumeName := fmt.Sprintf("file-mount-%d", i)
+		volumeSource := buildFileMountVolumeSource(fileMount)
+		if volumeSource == nil {
 			continue
 		}
-		if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
-			volumeName := fmt.Sprintf("file-mount-%d", i)
-			inputs.Volumes = append(inputs.Volumes, corev1.Volume{
-				Name: volumeName,
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{SecretName: fileMount.SecretRef.Name},
-				},
-			})
-			inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
-				Name:      volumeName,
-				MountPath: fileMount.MountPath,
-				ReadOnly:  true,
-			})
-		}
+		inputs.Volumes = append(inputs.Volumes, corev1.Volume{
+			Name:         volumeName,
+			VolumeSource: *volumeSource,
+		})
+		inputs.VolumeMounts = append(inputs.VolumeMounts, corev1.VolumeMount{
+			Name:      volumeName,
+			MountPath: fileMount.MountPath,
+			ReadOnly:  true,
+		})
 	}
 
 	return inputs
+}
+
+func buildFileMountVolumeSource(fileMount hermesv1alpha1.HermesAgentFileMountSpec) *corev1.VolumeSource {
+	items := fileMountProjectionItems(fileMount.Items)
+	if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
+		return &corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: *fileMount.ConfigMapRef,
+				Items:                items,
+				DefaultMode:          fileMount.DefaultMode,
+			},
+		}
+	}
+	if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
+		return &corev1.VolumeSource{
+			Secret: &corev1.SecretVolumeSource{
+				SecretName:  fileMount.SecretRef.Name,
+				Items:       items,
+				DefaultMode: fileMount.DefaultMode,
+			},
+		}
+	}
+	return nil
+}
+
+func fileMountProjectionItems(items []hermesv1alpha1.HermesAgentFileProjectionItem) []corev1.KeyToPath {
+	if len(items) == 0 {
+		return nil
+	}
+
+	projected := make([]corev1.KeyToPath, 0, len(items))
+	for _, item := range items {
+		projected = append(projected, corev1.KeyToPath{
+			Key:  item.Key,
+			Path: item.Path,
+			Mode: item.Mode,
+		})
+	}
+	return projected
 }
 
 func buildPersistentVolumeClaim(agent *hermesv1alpha1.HermesAgent) (*corev1.PersistentVolumeClaim, error) {
@@ -510,8 +583,35 @@ func newConfigMapEnvFromSnapshot(name string, optional bool, configMap *corev1.C
 	return snapshot
 }
 
-func newConfigMapProjectionSnapshot(name string, configMap *corev1.ConfigMap) referencedObjectSnapshot {
-	return newConfigMapEnvFromSnapshot(name, false, configMap)
+func newConfigMapProjectionSnapshot(name string, items []hermesv1alpha1.HermesAgentFileProjectionItem, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:    "ConfigMap",
+		Name:    name,
+		Present: configMap != nil,
+	}
+	if configMap == nil {
+		return snapshot
+	}
+	if len(items) == 0 {
+		snapshot.Data = copyConfigMapData(configMap)
+		return snapshot
+	}
+
+	snapshot.KeyFound = true
+	snapshot.Data = map[string]string{}
+	for _, item := range items {
+		value, ok := configMapFileValue(configMap, item.Key)
+		if !ok {
+			snapshot.KeyFound = false
+			snapshot.MissingKeys = append(snapshot.MissingKeys, item.Key)
+			continue
+		}
+		snapshot.Data[item.Key] = value
+	}
+	if len(snapshot.Data) == 0 {
+		snapshot.Data = nil
+	}
+	return snapshot
 }
 
 func newSecretKeySnapshot(name, key string, optional bool, secret *corev1.Secret) referencedObjectSnapshot {
@@ -551,8 +651,35 @@ func newSecretSnapshot(name string, optional bool, secret *corev1.Secret) refere
 	return snapshot
 }
 
-func newSecretProjectionSnapshot(name string, secret *corev1.Secret) referencedObjectSnapshot {
-	return newSecretSnapshot(name, false, secret)
+func newSecretProjectionSnapshot(name string, items []hermesv1alpha1.HermesAgentFileProjectionItem, secret *corev1.Secret) referencedObjectSnapshot {
+	snapshot := referencedObjectSnapshot{
+		Kind:    "Secret",
+		Name:    name,
+		Present: secret != nil,
+	}
+	if secret == nil {
+		return snapshot
+	}
+	if len(items) == 0 {
+		snapshot.Data = encodeSecretData(secret.Data)
+		return snapshot
+	}
+
+	snapshot.KeyFound = true
+	snapshot.Data = map[string]string{}
+	for _, item := range items {
+		value, ok := secret.Data[item.Key]
+		if !ok {
+			snapshot.KeyFound = false
+			snapshot.MissingKeys = append(snapshot.MissingKeys, item.Key)
+			continue
+		}
+		snapshot.Data[item.Key] = base64.StdEncoding.EncodeToString(value)
+	}
+	if len(snapshot.Data) == 0 {
+		snapshot.Data = nil
+	}
+	return snapshot
 }
 
 func configMapFileValue(configMap *corev1.ConfigMap, key string) (string, bool) {

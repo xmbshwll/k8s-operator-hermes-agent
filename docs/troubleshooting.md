@@ -15,7 +15,7 @@ Use those events together with the status conditions to narrow the issue quickly
 
 | Condition reason | What it means | What to check next |
 | --- | --- | --- |
-| `InvalidConfig` | The spec is internally inconsistent or references were defined incorrectly | Check `spec.config`, `spec.gatewayConfig`, `spec.env`, `spec.envFrom`, and `spec.secretRefs` for incomplete or conflicting fields |
+| `InvalidConfig` | The spec is internally inconsistent or references were defined incorrectly | Check `spec.config`, `spec.gatewayConfig`, `spec.env`, `spec.envFrom`, `spec.secretRefs`, and `spec.fileMounts` for incomplete or conflicting fields |
 | `ReferencedInputsReadFailed` | The controller could not read referenced ConfigMaps or Secrets because of an API or RBAC problem | Check operator logs and controller permissions |
 | `MissingReferencedInput` event | A referenced ConfigMap or Secret, or one of its keys, does not exist yet | Verify the referenced objects exist in the same namespace and that the names/keys are correct |
 | `ConfigMapReconcileFailed` | The operator could not create or update an inline generated ConfigMap | Check operator logs and look for API permission or conflict errors |

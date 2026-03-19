@@ -51,6 +51,19 @@ type HermesAgentConfigSource struct {
 	SecretRef *corev1.SecretKeySelector `json:"secretRef,omitempty"`
 }
 
+// HermesAgentFileProjectionItem defines a single projected file from a ConfigMap or Secret.
+type HermesAgentFileProjectionItem struct {
+	// key is the source key from the referenced ConfigMap or Secret.
+	Key string `json:"key"`
+
+	// path is the relative path for the projected file within mountPath.
+	Path string `json:"path"`
+
+	// mode overrides the file mode for this projected file.
+	// +optional
+	Mode *int32 `json:"mode,omitempty"`
+}
+
 // HermesAgentFileMountSpec defines a projected ConfigMap or Secret mounted into the Hermes pod.
 type HermesAgentFileMountSpec struct {
 	// mountPath is the absolute directory path where the projected files are mounted.
@@ -63,6 +76,16 @@ type HermesAgentFileMountSpec struct {
 	// secretRef points to a Secret projected as files at mountPath.
 	// +optional
 	SecretRef *corev1.LocalObjectReference `json:"secretRef,omitempty"`
+
+	// items selects specific keys and output paths from the referenced ConfigMap or Secret.
+	// When omitted, all keys are projected with their original file names.
+	// +optional
+	Items []HermesAgentFileProjectionItem `json:"items,omitempty"`
+
+	// defaultMode sets the default file mode for projected files.
+	// Individual items can override this with their own mode.
+	// +optional
+	DefaultMode *int32 `json:"defaultMode,omitempty"`
 }
 
 // HermesAgentPersistenceSpec defines persistent storage for Hermes state.

@@ -57,6 +57,13 @@ spec:
     - mountPath: /var/run/hermes/ssh
       secretRef:
         name: hermesagent-ssh-auth
+      defaultMode: 0444
+      items:
+        - key: id_ed25519
+          path: id_ed25519
+          mode: 0600
+        - key: known_hosts
+          path: known_hosts
   storage:
     persistence:
       enabled: true

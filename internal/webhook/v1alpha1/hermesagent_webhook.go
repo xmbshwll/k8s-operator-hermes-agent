@@ -19,6 +19,8 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	pathpkg "path"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -325,6 +327,57 @@ func validateFileMounts(path *field.Path, mounts []hermesv1alpha1.HermesAgentFil
 		if mount.SecretRef != nil && mount.SecretRef.Name == "" {
 			allErrs = append(allErrs, field.Required(mountPath.Child("secretRef", "name"), "name is required when secretRef is set"))
 		}
+		allErrs = append(allErrs, validateMode(mountPath.Child("defaultMode"), mount.DefaultMode)...)
+		seenItemPaths := map[string]int{}
+		seenItemKeys := map[string]int{}
+		for j, item := range mount.Items {
+			itemPath := mountPath.Child("items").Index(j)
+			if item.Key == "" {
+				allErrs = append(allErrs, field.Required(itemPath.Child("key"), "key is required"))
+			} else if previous, exists := seenItemKeys[item.Key]; exists {
+				allErrs = append(allErrs, field.Invalid(itemPath.Child("key"), item.Key, fmt.Sprintf("key duplicates fileMounts[%d].items[%d].key", i, previous)))
+			} else {
+				seenItemKeys[item.Key] = j
+			}
+			if item.Path == "" {
+				allErrs = append(allErrs, field.Required(itemPath.Child("path"), "path is required"))
+			} else {
+				allErrs = append(allErrs, validateFileMountItemPath(itemPath.Child("path"), item.Path)...)
+				if previous, exists := seenItemPaths[item.Path]; exists {
+					allErrs = append(allErrs, field.Invalid(itemPath.Child("path"), item.Path, fmt.Sprintf("path duplicates fileMounts[%d].items[%d].path", i, previous)))
+				} else {
+					seenItemPaths[item.Path] = j
+				}
+			}
+			allErrs = append(allErrs, validateMode(itemPath.Child("mode"), item.Mode)...)
+		}
+	}
+	return allErrs
+}
+
+func validateFileMountItemPath(path *field.Path, value string) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if value == "" {
+		return allErrs
+	}
+	if value[0] == '/' {
+		allErrs = append(allErrs, field.Invalid(path, value, "path must be relative"))
+		return allErrs
+	}
+	clean := pathpkg.Clean(value)
+	if clean == "." || clean != value || clean == ".." || strings.HasPrefix(clean, "../") {
+		allErrs = append(allErrs, field.Invalid(path, value, "path must not contain '.' or '..' path segments"))
+	}
+	return allErrs
+}
+
+func validateMode(path *field.Path, mode *int32) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if mode == nil {
+		return allErrs
+	}
+	if *mode < 0 || *mode > 0o777 {
+		allErrs = append(allErrs, field.Invalid(path, *mode, "must be between 0 and 0777"))
 	}
 	return allErrs
 }

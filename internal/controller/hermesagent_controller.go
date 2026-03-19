@@ -255,7 +255,7 @@ func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, age
 				}
 				configMap = nil
 			}
-			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newConfigMapProjectionSnapshot(fileMount.ConfigMapRef.Name, configMap))
+			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newConfigMapProjectionSnapshot(fileMount.ConfigMapRef.Name, fileMount.Items, configMap))
 			continue
 		}
 		if fileMount.SecretRef != nil && fileMount.SecretRef.Name != "" {
@@ -267,7 +267,7 @@ func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, age
 				}
 				secret = nil
 			}
-			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newSecretProjectionSnapshot(fileMount.SecretRef.Name, secret))
+			referencedInputs.FileMountRefs = append(referencedInputs.FileMountRefs, newSecretProjectionSnapshot(fileMount.SecretRef.Name, fileMount.Items, secret))
 		}
 	}
 
@@ -669,6 +669,9 @@ func missingReferenceMessages(referencedInputs referencedInputState) []string {
 		}
 		if snapshot.Key != "" && !snapshot.KeyFound {
 			messages = append(messages, fmt.Sprintf("%s %s is missing key %s", snapshot.Kind, snapshot.Name, snapshot.Key))
+		}
+		for _, key := range snapshot.MissingKeys {
+			messages = append(messages, fmt.Sprintf("%s %s is missing key %s", snapshot.Kind, snapshot.Name, key))
 		}
 	}
 

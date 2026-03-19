@@ -221,7 +221,7 @@ Environment and mounted files are handled separately:
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports `ConfigMap` and `Secret` env sources
 - `spec.secretRefs` keeps the simple legacy secret-bundle path under `/var/run/hermes/secrets/<name>`
-- `spec.fileMounts` mounts a whole `ConfigMap` or `Secret` at an explicit path, which is the preferred path for new file-based runtime inputs such as plugins, SSH material, prompts, or certificates; the operator only delivers those files, and the runtime image still decides what to do with them
+- `spec.fileMounts` mounts a projected `ConfigMap` or `Secret` at an explicit path, with optional key selection and file mode controls for cases like plugins, SSH material, prompts, or certificates; the operator only delivers those files, and the runtime image still decides what to do with them
 
 Workload placement, registry auth, and workload identity are also configured per `HermesAgent`:
 - `spec.imagePullSecrets` applies to the managed Hermes pod when the runtime image lives in a private registry
@@ -242,7 +242,7 @@ The webhook currently enforces and/or defaults:
 - `raw` and `configMapRef` are mutually exclusive for `spec.config` and `spec.gatewayConfig`
 - referenced config keys must include both `name` and `key`
 - `spec.env[].valueFrom`, `spec.envFrom`, `spec.secretRefs`, `spec.fileMounts`, and `spec.imagePullSecrets` must use complete references
-- file mounts must use exactly one source, an absolute `mountPath`, and unique mount paths
+- file mounts must use exactly one source, an absolute `mountPath`, and unique mount paths; projected items must use unique keys, unique relative output paths, and valid file modes
 - storage sizes must be valid Kubernetes quantities greater than zero
 - enabled services must use a positive port
 - runtime defaults for mode, image tag/pull policy, persistence, service settings, network policy, and probe profiles

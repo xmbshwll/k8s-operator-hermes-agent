@@ -25,7 +25,7 @@ Scope: namespaced
 | `spec.env` | array | no | empty | Explicit environment variables |
 | `spec.envFrom` | array | no | empty | Import env from `ConfigMap` or `Secret` |
 | `spec.secretRefs` | array | no | empty | Mount named secrets under `/var/run/hermes/secrets/<name>` |
-| `spec.fileMounts` | array | no | empty | Mount ConfigMaps or Secrets as files at explicit paths |
+| `spec.fileMounts` | array | no | empty | Mount projected ConfigMaps or Secrets as files at explicit paths |
 | `spec.imagePullSecrets` | array | no | empty | Image pull secrets for the Hermes workload pod |
 | `spec.serviceAccountName` | string | no | empty | ServiceAccount for the Hermes workload pod |
 | `spec.nodeSelector` | object | no | empty | Node selector for the Hermes workload pod |
@@ -111,10 +111,15 @@ Referenced secret content is hashed into the pod template.
 Changes trigger a rollout.
 
 ### `spec.fileMounts`
-Mount a whole `ConfigMap` or `Secret` as a read-only directory at an explicit path.
+Mount a projected `ConfigMap` or `Secret` as a read-only directory at an explicit path.
 Each entry must set:
 - `mountPath`
 - exactly one of `configMapRef` or `secretRef`
+
+Optional projection controls:
+- `items[]` to select specific keys and output paths
+- `defaultMode` to set the default file mode for projected files
+- `items[].mode` to override the mode for a specific file
 
 ```yaml
 spec:
@@ -122,19 +127,35 @@ spec:
     - mountPath: /var/run/hermes/plugins
       configMapRef:
         name: hermes-plugins
+      items:
+        - key: plugin.py
+          path: plugin.py
     - mountPath: /var/run/hermes/ssh
       secretRef:
         name: hermes-ssh-auth
+      defaultMode: 0444
+      items:
+        - key: id_ed25519
+          path: id_ed25519
+          mode: 0600
+        - key: known_hosts
+          path: known_hosts
 ```
 
 Rules:
 - `mountPath` must be absolute
 - mount paths must be unique within `spec.fileMounts`
 - exactly one source is allowed per entry
+- when `items` is omitted, all keys from the referenced object are projected
+- `items[].key` and `items[].path` are required when `items` is used
+- `items[].path` must be relative and must not contain `.` or `..` path segments
+- item keys and item paths must be unique within a single file mount
+- `defaultMode` and `items[].mode` must be between `0000` and `0777`
 
 Use this for plugin bundles, SSH material, prompt packs, certificates, or other runtime assets that a custom Hermes runtime image consumes as files.
 The operator only delivers those files; the runtime image still defines whether any plugin, API, or integration behavior exists.
 Referenced `ConfigMap` and `Secret` content is hashed into the pod template.
+When `items` is used, the rollout hash only tracks the selected keys instead of unrelated keys in the same object.
 Changes trigger a rollout.
 
 ## Workload pod placement and registry auth
@@ -372,6 +393,7 @@ The webhook currently rejects:
 - mixed `raw`, `configMapRef`, and `secretRef` sources on the same config field
 - incomplete config references
 - incomplete `env`, `envFrom`, `secretRefs`, `fileMounts`, or `imagePullSecrets` references
+- invalid file mount projection items such as duplicate keys, duplicate output paths, invalid relative paths, or invalid file modes
 - invalid file mount source combinations or duplicate file mount paths
 - invalid storage sizes
 - invalid enabled Service ports

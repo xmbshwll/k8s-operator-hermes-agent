@@ -91,6 +91,7 @@ The controller computes a config hash from:
 - `spec.env`, including current data for `configMapKeyRef` and `secretKeyRef`
 - `spec.envFrom` plus current data from referenced `ConfigMap` and `Secret` objects
 - `spec.secretRefs` plus current data from referenced `Secret` objects
+- `spec.fileMounts` plus current data from the selected referenced `ConfigMap` or `Secret` keys
 
 That hash is added to the pod template so config changes roll the `StatefulSet` predictably.
 
@@ -101,6 +102,7 @@ The operator separates file-like config from environment-driven config.
 - `spec.env` adds explicit environment variables
 - `spec.envFrom` imports environment values from `ConfigMap` or `Secret` sources
 - `spec.secretRefs` mounts named secrets as files
+- `spec.fileMounts` mounts projected ConfigMap or Secret files with optional key selection and file mode controls
 
 This lets users keep credentials in Kubernetes `Secret` resources instead of embedding them into inline config blobs.
 

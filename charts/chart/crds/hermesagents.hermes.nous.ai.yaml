@@ -1249,6 +1249,38 @@ spec:
                           type: string
                       type: object
                       x-kubernetes-map-type: atomic
+                    defaultMode:
+                      description: |-
+                        defaultMode sets the default file mode for projected files.
+                        Individual items can override this with their own mode.
+                      format: int32
+                      type: integer
+                    items:
+                      description: |-
+                        items selects specific keys and output paths from the referenced ConfigMap or Secret.
+                        When omitted, all keys are projected with their original file names.
+                      items:
+                        description: HermesAgentFileProjectionItem defines a single
+                          projected file from a ConfigMap or Secret.
+                        properties:
+                          key:
+                            description: key is the source key from the referenced
+                              ConfigMap or Secret.
+                            type: string
+                          mode:
+                            description: mode overrides the file mode for this projected
+                              file.
+                            format: int32
+                            type: integer
+                          path:
+                            description: path is the relative path for the projected
+                              file within mountPath.
+                            type: string
+                        required:
+                        - key
+                        - path
+                        type: object
+                      type: array
                     mountPath:
                       description: mountPath is the absolute directory path where
                         the projected files are mounted.

@@ -1275,6 +1275,66 @@ func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "MissingReferencedInput", "ConfigMap missing-config was not found")
 }
 
+func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	sshSecret := &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{Name: "ssh-auth", Namespace: testNamespace},
+		Data: map[string][]byte{
+			"id_ed25519": []byte("private-key"),
+		},
+	}
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+				MountPath: "/var/run/hermes/ssh",
+				SecretRef: &corev1.LocalObjectReference{Name: "ssh-auth"},
+				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+					Key:  "id_ed25519",
+					Path: "id_ed25519",
+				}, {
+					Key:  "known_hosts",
+					Path: "known_hosts",
+				}},
+			}},
+		},
+	}
+
+	recorder := record.NewFakeRecorder(10)
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent, sshSecret).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme, Recorder: recorder}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "MissingReferencedInput", "Secret ssh-auth is missing key known_hosts")
+}
+
 func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {

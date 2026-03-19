@@ -263,12 +263,21 @@ func TestBuildConfigPlanRejectsMixedSource(t *testing.T) {
 }
 
 func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
+	invalidMode := int32(0o1000)
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "plugins"},
 		SecretRef:    &corev1.LocalObjectReference{Name: "ssh-auth"},
+	}, {
+		MountPath:   "/var/run/hermes/ssh",
+		SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
+		DefaultMode: &invalidMode,
+		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+			Key:  "id_ed25519",
+			Path: "../id_ed25519",
+		}},
 	}}
 
 	if _, err := buildConfigPlan(agent); err == nil {
@@ -277,6 +286,8 @@ func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
 }
 
 func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) {
+	defaultMode := int32(0o444)
+	privateKeyMode := int32(0o600)
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
@@ -290,6 +301,22 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) 
 	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+			Key:  "plugin.py",
+			Path: "bundle/plugin.py",
+		}},
+	}, {
+		MountPath:   "/var/run/hermes/ssh",
+		SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
+		DefaultMode: &defaultMode,
+		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+			Key:  "id_ed25519",
+			Path: "id_ed25519",
+			Mode: &privateKeyMode,
+		}, {
+			Key:  "known_hosts",
+			Path: "known_hosts",
+		}},
 	}}
 
 	plan, err := buildConfigPlan(agent)
@@ -304,16 +331,32 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) 
 	if len(inputs.EnvFrom) != 1 {
 		t.Fatalf("expected envFrom to be preserved, got %d entries", len(inputs.EnvFrom))
 	}
-	if len(inputs.Volumes) != 3 {
-		t.Fatalf("expected 3 volumes (config + secret + file mount), got %d", len(inputs.Volumes))
+	if len(inputs.Volumes) != 4 {
+		t.Fatalf("expected 4 volumes (config + secret + 2 file mounts), got %d", len(inputs.Volumes))
 	}
-	if len(inputs.VolumeMounts) != 3 {
-		t.Fatalf("expected 3 volume mounts (config + secret + file mount), got %d", len(inputs.VolumeMounts))
+	if len(inputs.VolumeMounts) != 4 {
+		t.Fatalf("expected 4 volume mounts (config + secret + 2 file mounts), got %d", len(inputs.VolumeMounts))
 	}
 	if inputs.Env[0].Name != "HERMES_HOME" || inputs.Env[0].Value != hermesHomePath {
 		t.Fatalf("expected HERMES_HOME env var to be injected, got %+v", inputs.Env[0])
 	}
 	requireVolumeMount(t, inputs.VolumeMounts, "file-mount-0", "/var/run/hermes/plugins")
+	requireVolumeMount(t, inputs.VolumeMounts, "file-mount-1", "/var/run/hermes/ssh")
+	if inputs.Volumes[2].ConfigMap == nil || len(inputs.Volumes[2].ConfigMap.Items) != 1 {
+		t.Fatalf("expected projected ConfigMap items, got %+v", inputs.Volumes[2])
+	}
+	if inputs.Volumes[2].ConfigMap.Items[0].Path != "bundle/plugin.py" {
+		t.Fatalf("expected plugin file to be projected to bundle/plugin.py, got %+v", inputs.Volumes[2].ConfigMap.Items)
+	}
+	if inputs.Volumes[3].Secret == nil || len(inputs.Volumes[3].Secret.Items) != 2 {
+		t.Fatalf("expected projected Secret items, got %+v", inputs.Volumes[3])
+	}
+	if inputs.Volumes[3].Secret.DefaultMode == nil || *inputs.Volumes[3].Secret.DefaultMode != defaultMode {
+		t.Fatalf("expected secret file mount defaultMode %o, got %+v", defaultMode, inputs.Volumes[3].Secret.DefaultMode)
+	}
+	if inputs.Volumes[3].Secret.Items[0].Mode == nil || *inputs.Volumes[3].Secret.Items[0].Mode != privateKeyMode {
+		t.Fatalf("expected private key mode %o, got %+v", privateKeyMode, inputs.Volumes[3].Secret.Items[0].Mode)
+	}
 }
 
 func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
@@ -438,8 +481,8 @@ func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
 
 	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
 		FileMountRefs: []referencedObjectSnapshot{
-			newConfigMapProjectionSnapshot("hermes-plugins", &corev1.ConfigMap{Data: map[string]string{"plugin.py": "first"}}),
-			newSecretProjectionSnapshot("ssh-auth", &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("first")}}),
+			newConfigMapProjectionSnapshot("hermes-plugins", nil, &corev1.ConfigMap{Data: map[string]string{"plugin.py": "first"}}),
+			newSecretProjectionSnapshot("ssh-auth", nil, &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("first")}}),
 		},
 	})
 	if err != nil {
@@ -447,8 +490,8 @@ func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
 	}
 	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
 		FileMountRefs: []referencedObjectSnapshot{
-			newConfigMapProjectionSnapshot("hermes-plugins", &corev1.ConfigMap{Data: map[string]string{"plugin.py": "second"}}),
-			newSecretProjectionSnapshot("ssh-auth", &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("second")}}),
+			newConfigMapProjectionSnapshot("hermes-plugins", nil, &corev1.ConfigMap{Data: map[string]string{"plugin.py": "second"}}),
+			newSecretProjectionSnapshot("ssh-auth", nil, &corev1.Secret{Data: map[string][]byte{"id_ed25519": []byte("second")}}),
 		},
 	})
 	if err != nil {
@@ -456,6 +499,39 @@ func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
 	}
 	if basePlan.Hash == updatedPlan.Hash {
 		t.Fatal("expected config hash to change when file mount content changes")
+	}
+}
+
+func TestConfigHashIgnoresUnselectedFileMountKeys(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+		MountPath:    "/var/run/hermes/plugins",
+		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
+		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+			Key:  "plugin.py",
+			Path: "plugin.py",
+		}},
+	}}
+
+	basePlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileMountRefs: []referencedObjectSnapshot{
+			newConfigMapProjectionSnapshot("hermes-plugins", agent.Spec.FileMounts[0].Items, &corev1.ConfigMap{Data: map[string]string{"plugin.py": "first", "README.md": "alpha"}}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(base) returned error: %v", err)
+	}
+	updatedPlan, err := buildConfigPlanWithReferences(agent, referencedInputState{
+		FileMountRefs: []referencedObjectSnapshot{
+			newConfigMapProjectionSnapshot("hermes-plugins", agent.Spec.FileMounts[0].Items, &corev1.ConfigMap{Data: map[string]string{"plugin.py": "first", "README.md": "beta"}}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildConfigPlanWithReferences(updated) returned error: %v", err)
+	}
+	if basePlan.Hash != updatedPlan.Hash {
+		t.Fatal("expected config hash to ignore unselected file mount keys")
 	}
 }
 
