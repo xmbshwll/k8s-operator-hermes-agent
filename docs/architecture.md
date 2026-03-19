@@ -168,27 +168,61 @@ High-signal events are emitted for:
 
 ## Install model
 
-Operator installation is packaged as a Helm chart under `charts/chart/`.
+Operator installation is packaged as a Helm chart under `charts/chart/` and as a generated `install.yaml` bundle for release consumers.
+
+### Helm chart behavior
 
 The chart installs:
-- the `HermesAgent` CRD
+- the `HermesAgent` CRD on first install from `crds/`
 - the controller deployment
-- mutating and validating admission webhooks
 - controller RBAC
 - the metrics service
+- mutating and validating admission webhooks when the webhook path is enabled
+- cert-manager issuer and certificate resources when chart-managed TLS is enabled
+- optional `ServiceMonitor` and ingress `NetworkPolicy` resources for the controller-manager endpoints
 
-Webhook-enabled installs require cert-manager in the cluster so the webhook serving certificate can be issued and the CA bundle can be injected into the webhook configurations.
+The published chart is the primary installation path, but Helm CRDs still follow normal Helm constraints: the CRD in `crds/` is install-time only.
+For upgrades, the intended operational path is explicit and two-step:
+1. apply the release CRD bundle first
+2. then run `helm upgrade`
 
-Install-time values are intentionally minimal:
+That flow keeps the controller and CRD schema aligned instead of assuming Helm will patch CRDs in place.
+
+### Webhook and cert-manager model
+
+The supported production path is still webhook-enabled and cert-manager-backed.
+When `webhook.enabled=true` and `certManager.enabled=true`, the chart renders the webhook service, admission configurations, and serving certificate resources, and the manager process also keeps webhook runtime behavior enabled.
+
+When the chart disables that path — either with `webhook.enabled=false` or `certManager.enabled=false` — the rendered webhook resources disappear and the manager container sets `ENABLE_WEBHOOKS=false` so the process does not keep serving or registering admission webhooks behind the scenes.
+
+### Metrics and observability model
+
+Metrics are served over HTTPS when enabled.
+The chart always supports the controller-runtime metrics service and can optionally add:
+- a `ServiceMonitor` when the Prometheus Operator API exists at render time
+- ingress `NetworkPolicy` resources for metrics and webhook traffic
+- cert-manager-backed metrics serving certificates when `metrics.certManager.enabled=true` together with `certManager.enabled=true`
+
+That metrics TLS path mirrors the kustomize-based production guidance more closely: the chart can issue a dedicated metrics certificate, mount it into the controller-manager pod, and configure the generated `ServiceMonitor` to use the matching CA, cert, and key secret references.
+
+### Release scoping
+
+Chart-managed controller-manager selectors are release-scoped with `app.kubernetes.io/instance`.
+That is an architectural choice, not just a cosmetic label convention: metrics discovery, webhook service targeting, and optional controller-manager `NetworkPolicy` resources should only ever target the pods from their own Helm release, even if multiple releases exist in the same namespace.
+
+### Install-time values
+
+The chart intentionally exposes install-time controls for operator concerns only, including:
 - operator image repository, tag, and pull policy
-- controller resource requests and limits
-- leader election toggle
+- controller replica count and leader election
 - service account creation or reuse
-- metrics enablement
-- webhook enablement
-- cert-manager-backed webhook certificate resources
+- pod metadata, scheduling, and security settings
+- metrics enablement, scraping integration, ingress protection, and optional cert-manager-backed metrics TLS
+- webhook enablement, ingress protection, and cert-manager-backed webhook certificates
 
 The Hermes runtime image is not configured through the chart because it belongs to each `HermesAgent`, not to the operator installation.
+
+For concrete install commands, supported values, and upgrade notes, see `README.md`, `docs/helm-values.md`, and `docs/release.md`.
 
 ## Main design decisions
 
