@@ -51,19 +51,9 @@ rules:
   resources:
   - hermesagents
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - hermes.nous.ai
-  resources:
-  - hermesagents/finalizers
-  verbs:
-  - update
 - apiGroups:
   - hermes.nous.ai
   resources:
