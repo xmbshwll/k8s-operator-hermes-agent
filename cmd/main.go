@@ -103,22 +103,29 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	// Initial webhook TLS options
-	webhookTLSOpts := tlsOpts
-	webhookServerOptions := webhook.Options{
-		TLSOpts: webhookTLSOpts,
+	enableWebhooks := os.Getenv("ENABLE_WEBHOOKS") != "false"
+
+	var webhookServer webhook.Server
+	if enableWebhooks {
+		// Initial webhook TLS options
+		webhookTLSOpts := tlsOpts
+		webhookServerOptions := webhook.Options{
+			TLSOpts: webhookTLSOpts,
+		}
+
+		if len(webhookCertPath) > 0 {
+			setupLog.Info("Initializing webhook certificate watcher using provided certificates",
+				"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
+
+			webhookServerOptions.CertDir = webhookCertPath
+			webhookServerOptions.CertName = webhookCertName
+			webhookServerOptions.KeyName = webhookCertKey
+		}
+
+		webhookServer = webhook.NewServer(webhookServerOptions)
+	} else {
+		setupLog.Info("Admission webhooks are disabled")
 	}
-
-	if len(webhookCertPath) > 0 {
-		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
-			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
-
-		webhookServerOptions.CertDir = webhookCertPath
-		webhookServerOptions.CertName = webhookCertName
-		webhookServerOptions.KeyName = webhookCertKey
-	}
-
-	webhookServer := webhook.NewServer(webhookServerOptions)
 
 	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
 	// More info:
@@ -155,10 +162,9 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	managerOptions := ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
-		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "73bc4e30.nous.ai",
@@ -173,7 +179,12 @@ func main() {
 		// if you are doing or is intended to do any operation such as perform cleanups
 		// after the manager stops then its usage might be unsafe.
 		// LeaderElectionReleaseOnCancel: true,
-	})
+	}
+	if enableWebhooks {
+		managerOptions.WebhookServer = webhookServer
+	}
+
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), managerOptions)
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
 		os.Exit(1)
@@ -187,8 +198,7 @@ func main() {
 		setupLog.Error(err, "Failed to create controller", "controller", "HermesAgent")
 		os.Exit(1)
 	}
-	// nolint:goconst
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+	if enableWebhooks {
 		if err := webhookv1alpha1.SetupHermesAgentWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create webhook", "webhook", "HermesAgent")
 			os.Exit(1)

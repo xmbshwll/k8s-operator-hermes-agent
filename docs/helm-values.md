@@ -207,6 +207,7 @@ webhook:
 Controls admission webhook serving.
 The chart is designed for webhook-enabled installs.
 `webhook.networkPolicy.enabled=true` adds an ingress NetworkPolicy for webhook traffic.
+When `webhook.enabled=false`, the chart also sets `ENABLE_WEBHOOKS=false` in the controller-manager container so the process does not register or serve admission webhooks at runtime.
 
 ### `certManager`
 
@@ -219,7 +220,7 @@ Controls chart-managed webhook certificate resources.
 
 Important behavior:
 - the supported production path is `webhook.enabled=true` and `certManager.enabled=true`
-- if `certManager.enabled=false`, the chart will not render webhook resources that depend on webhook TLS
+- if `certManager.enabled=false`, the chart will not render webhook resources that depend on webhook TLS and will also set `ENABLE_WEBHOOKS=false` so the manager does not keep webhook runtime behavior enabled by itself
 - in practice, disabling cert-manager means disabling the default admission-webhook install path too
 
 ## Secure metrics and Prometheus

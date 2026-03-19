@@ -54,6 +54,9 @@ spec:
         - /manager
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env:
+        - name: ENABLE_WEBHOOKS
+          value: {{ ternary "true" "false" (and .Values.webhook.enabled .Values.certManager.enabled) | quote }}
         livenessProbe:
           httpGet:
             path: /healthz

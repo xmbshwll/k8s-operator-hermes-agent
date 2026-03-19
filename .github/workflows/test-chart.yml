@@ -105,6 +105,48 @@ jobs:
             fi
           done
 
+      - name: Validate webhook-disabled render path
+        run: |
+          rendered_chart=/tmp/chart-render-webhook-disabled.yaml
+
+          helm template k8s-operator-hermes-agent ./charts/chart \
+            --set webhook.enabled=false > "${rendered_chart}"
+
+          for forbidden_line in \
+            "kind: MutatingWebhookConfiguration" \
+            "kind: ValidatingWebhookConfiguration" \
+            "name: k8s-operator-hermes-agent-webhook-service" \
+            'value: "true"'; do
+            if grep -Fq "${forbidden_line}" "${rendered_chart}"; then
+              echo "${forbidden_line} should not render for webhook.enabled=false" >&2
+              exit 1
+            fi
+          done
+
+          grep -F 'name: ENABLE_WEBHOOKS' "${rendered_chart}"
+          grep -F 'value: "false"' "${rendered_chart}"
+
+      - name: Validate cert-manager-disabled webhook runtime path
+        run: |
+          rendered_chart=/tmp/chart-render-certmanager-disabled.yaml
+
+          helm template k8s-operator-hermes-agent ./charts/chart \
+            --set certManager.enabled=false > "${rendered_chart}"
+
+          for forbidden_line in \
+            "kind: MutatingWebhookConfiguration" \
+            "kind: ValidatingWebhookConfiguration" \
+            "name: k8s-operator-hermes-agent-webhook-service" \
+            'value: "true"'; do
+            if grep -Fq "${forbidden_line}" "${rendered_chart}"; then
+              echo "${forbidden_line} should not render for certManager.enabled=false" >&2
+              exit 1
+            fi
+          done
+
+          grep -F 'name: ENABLE_WEBHOOKS' "${rendered_chart}"
+          grep -F 'value: "false"' "${rendered_chart}"
+
       - name: Deploy manager via Helm
         run: make helm-deploy IMG=controller:latest
 
