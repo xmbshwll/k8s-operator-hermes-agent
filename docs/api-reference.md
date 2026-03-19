@@ -44,8 +44,8 @@ Scope: namespaced
 ```yaml
 spec:
   image:
-    repository: ghcr.io/example/hermes-agent
-    tag: gateway-core
+    repository: ghcr.io/xmbshwll/hermes-agent-docker
+    tag: latest
     pullPolicy: IfNotPresent
 ```
 
@@ -416,7 +416,7 @@ metadata:
   name: hermesagent-sample
 spec:
   image:
-    repository: ghcr.io/example/hermes-agent
+    repository: ghcr.io/xmbshwll/hermes-agent-docker
   config:
     raw: |
       model: anthropic/claude-opus-4.1

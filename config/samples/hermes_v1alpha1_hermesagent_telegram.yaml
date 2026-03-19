@@ -22,8 +22,8 @@ metadata:
     app.kubernetes.io/managed-by: kubectl
 spec:
   image:
-    repository: ghcr.io/example/hermes-agent
-    tag: gateway-core
+    repository: ghcr.io/xmbshwll/hermes-agent-docker
+    tag: latest
     pullPolicy: IfNotPresent
   mode: gateway
   config:

@@ -158,16 +158,16 @@ For other real deployment paths, see:
 
 The API server and Open WebUI samples rely on the existing optional `Service`, but they are only valid when you provide a custom Hermes runtime image that already serves the expected HTTP interface on port `8080` while running under `hermes gateway`. They should not be read as evidence that a stock Hermes image exposes that API shape by default.
 
-Before applying the minimal sample, update the Hermes runtime image:
+The minimal sample already points at the published Hermes runtime image from [`xmbshwll/hermes-agent-docker`](https://github.com/xmbshwll/hermes-agent-docker):
 
 ```yaml
 spec:
   image:
-    repository: ghcr.io/example/hermes-agent
-    tag: gateway-core
+    repository: ghcr.io/xmbshwll/hermes-agent-docker
+    tag: latest
 ```
 
-Replace that placeholder with your real Hermes image.
+If you need a different Hermes build, replace that image reference before applying the sample.
 
 Then apply the sample:
 
