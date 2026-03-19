@@ -1,6 +1,10 @@
 # HermesAgent samples
 
 Use the sample that matches the deployment path you want to test.
+Each sample is applied directly with `kubectl apply -f`, so remove it with the matching `kubectl delete -f` command when you are done.
+
+These samples assume the operator is already installed.
+For operator-level install knobs such as secure metrics, cert-manager-backed webhooks, and Prometheus integration, see `docs/helm-values.md` and the manifests under `config/prometheus/`.
 
 ## Minimal gateway
 
@@ -16,6 +20,12 @@ Apply it with:
 kubectl apply -k config/samples/
 ```
 
+Remove it with:
+
+```sh
+kubectl delete -k config/samples/
+```
+
 ## Telegram gateway with secrets
 
 File: `hermes_v1alpha1_hermesagent_telegram.yaml`
@@ -25,6 +35,7 @@ File: `hermes_v1alpha1_hermesagent_telegram.yaml`
 - Enables stricter readiness checks with `requireConnectedPlatform: true`
 - Secret updates trigger a reconcile and pod rollout
 - Good for a real messaging deployment path
+- Useful for validating webhook, secret, and connected-platform readiness behavior
 
 Apply it with:
 
@@ -35,6 +46,13 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
 Before applying it:
 - replace the placeholder secret values
 - set `spec.image.repository` to your Hermes runtime image
+- keep `networkPolicy.enabled: true` unless you have a deliberate reason to widen egress manually
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
+```
 
 ## SSH terminal backend
 
@@ -55,3 +73,10 @@ Before applying it:
 - replace the placeholder SSH host, user, and model provider key
 - add your SSH private key and `known_hosts` content to the auth secret
 - make sure your Hermes runtime image knows how to consume the mounted SSH auth bundle
+- leave `networkPolicy.enabled: true` unless you are intentionally supplying your own policy
+
+Remove it with:
+
+```sh
+kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
+```

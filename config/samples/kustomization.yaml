@@ -1,4 +1,6 @@
-## Append samples of your project ##
+# Minimal sample set applied by `kubectl apply -k config/samples/`.
+# Additional scenario-specific samples are documented in README.md and should
+# be applied directly with `kubectl apply -f`.
 resources:
 - hermes_v1alpha1_hermesagent.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

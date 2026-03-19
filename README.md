@@ -12,12 +12,12 @@ This repository contains the **operator**. It does **not** build the Hermes runt
 
 ## Status
 
-This is an MVP-focused operator. The first release is intentionally narrow:
+This operator is intentionally narrow in scope for its first production-ready release:
 - one `HermesAgent` resource kind
 - one Hermes pod per resource
 - persistent local state via PVC
 - egress-first deployments
-- minimal installation surface via Helm
+- a single supported installation path via Helm or the generated install bundle
 
 See [`docs/architecture.md`](docs/architecture.md) for the design rationale and explicit v1 non-goals.
 
@@ -41,11 +41,11 @@ The controller then reconciles:
 
 ## Prerequisites
 
-- Go 1.24.6+
+- Go 1.25.3+
 - Docker
 - kubectl
 - Access to a Kubernetes cluster
-- Helm 4 for chart installation
+- Helm 4 for chart installation and the bundled Makefile workflow
 - cert-manager in the target cluster when admission webhooks are enabled
 
 ## Key concepts
@@ -90,7 +90,7 @@ The controller mounts:
 ```sh
 helm install k8s-operator-hermes-agent \
   oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
-  --version 0.1.0 \
+  --version <version> \
   --namespace k8s-operator-hermes-agent-system \
   --create-namespace
 ```
@@ -104,7 +104,7 @@ Published installs enable admission webhooks and require cert-manager to already
 
 ```sh
 kubectl apply -f \
-  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v0.1.0/install.yaml
+  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v<version>/install.yaml
 ```
 
 This installs:
@@ -113,6 +113,8 @@ This installs:
 - admission webhook configuration
 - RBAC for the controller
 - the metrics service
+
+For chart configuration, install notes, and upgrade guidance, see [docs/helm-values.md](docs/helm-values.md).
 
 ### 3. Verify the operator
 
@@ -224,6 +226,8 @@ The webhook currently enforces and/or defaults:
 - enabled services must use a positive port
 - runtime defaults for mode, image tag/pull policy, persistence, service settings, network policy, and probe profiles
 
+For the full CRD field reference, see [docs/api-reference.md](docs/api-reference.md).
+
 ## Persistence model
 
 Hermes is treated as stateful.
@@ -254,6 +258,8 @@ Helm uninstall keeps the CRD so existing custom resources are not removed unexpe
 If you installed from the published bundle, `kubectl delete -f .../install.yaml` also deletes the CRD.
 Use that only if you want to remove the API entirely after deleting all `HermesAgent` resources.
 
+If you applied sample manifests directly with `kubectl apply -f config/samples/<file>.yaml`, remove those exact files directly as well. `kubectl delete -k config/samples/` only cleans up the minimal sample referenced by `config/samples/kustomization.yaml`.
+
 ## Development
 
 Useful commands:
@@ -266,7 +272,7 @@ make build-installer
 make package-chart
 ```
 
-`make test-e2e` creates a disposable Kind cluster, builds the operator image plus a lightweight Hermes-compatible runtime image, installs the operator, applies a sample `HermesAgent`, and validates readiness, PVC-backed persistence across restart, and config rollout behavior.
+`make test-e2e` creates a disposable Kind cluster, builds the operator image plus a lightweight Hermes-compatible runtime image, installs the operator, applies a sample `HermesAgent`, and validates readiness, PVC-backed persistence across restart, webhook rejection, referenced-config rollouts, secret-driven rollouts, and optional resource behavior.
 
 Helm chart location:
 - `charts/chart/`
@@ -285,15 +291,17 @@ Package a release-style chart locally:
 
 ```sh
 make package-chart \
-  CHART_VERSION=0.1.0 \
-  CHART_APP_VERSION=0.1.0 \
+  CHART_VERSION=<version> \
+  CHART_APP_VERSION=<version> \
   CHART_IMAGE_REPOSITORY=ghcr.io/xmbshwll/k8s-operator-hermes-agent \
-  CHART_IMAGE_TAG=v0.1.0
+  CHART_IMAGE_TAG=v<version>
 ```
 
 ## Documentation
 
 - [Architecture notes](docs/architecture.md)
+- [API reference](docs/api-reference.md)
+- [Helm values and upgrade notes](docs/helm-values.md)
 - [Troubleshooting guide](docs/troubleshooting.md)
 - [Release workflow](docs/release.md)
 - [Sample catalog](config/samples/README.md)

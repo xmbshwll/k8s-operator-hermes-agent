@@ -183,6 +183,8 @@ Install-time values are intentionally minimal:
 - leader election toggle
 - service account creation or reuse
 - metrics enablement
+- webhook enablement
+- cert-manager-backed webhook certificate resources
 
 The Hermes runtime image is not configured through the chart because it belongs to each `HermesAgent`, not to the operator installation.
 

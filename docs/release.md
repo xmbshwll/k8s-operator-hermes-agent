@@ -17,11 +17,11 @@ Use semantic version tags with a leading `v`:
 
 The release workflow maps the tag to published artifacts like this:
 
-- git tag: `v0.2.0`
-- controller image: `ghcr.io/xmbshwll/k8s-operator-hermes-agent:v0.2.0`
-- Helm chart version: `0.2.0`
-- Helm chart appVersion: `0.2.0`
-- release bundle: `install.yaml` attached to the `v0.2.0` GitHub release
+- git tag: `v<version>`
+- controller image: `ghcr.io/xmbshwll/k8s-operator-hermes-agent:v<version>`
+- Helm chart version: `<version>`
+- Helm chart appVersion: `<version>`
+- release bundle: `install.yaml` attached to the `v<version>` GitHub release
 
 ## Published install paths
 
@@ -30,7 +30,7 @@ The release workflow maps the tag to published artifacts like this:
 ```sh
 helm install k8s-operator-hermes-agent \
   oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
-  --version 0.2.0 \
+  --version <version> \
   --namespace k8s-operator-hermes-agent-system \
   --create-namespace
 ```
@@ -44,7 +44,7 @@ Published releases enable admission webhooks by default, so the target cluster m
 
 ```sh
 kubectl apply -f \
-  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v0.2.0/install.yaml
+  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v<version>/install.yaml
 ```
 
 The release bundle is generated with the same versioned controller image used by the chart.
@@ -60,8 +60,8 @@ It also expects cert-manager to be installed before applying the bundle because 
 3. Create and push a tag
 
 ```sh
-git tag -a v0.2.0 -m "Release v0.2.0"
-git push origin v0.2.0
+git tag -a v<version> -m "Release v<version>"
+git push origin v<version>
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`.
@@ -89,12 +89,12 @@ Labels excluded from generated notes are configured in `.github/release.yml`.
 You can build the release artifacts locally before tagging:
 
 ```sh
-make build-installer IMG=ghcr.io/xmbshwll/k8s-operator-hermes-agent:v0.2.0
+make build-installer IMG=ghcr.io/xmbshwll/k8s-operator-hermes-agent:v<version>
 make package-chart \
-  CHART_VERSION=0.2.0 \
-  CHART_APP_VERSION=0.2.0 \
+  CHART_VERSION=<version> \
+  CHART_APP_VERSION=<version> \
   CHART_IMAGE_REPOSITORY=ghcr.io/xmbshwll/k8s-operator-hermes-agent \
-  CHART_IMAGE_TAG=v0.2.0
+  CHART_IMAGE_TAG=v<version>
 ```
 
 This is useful for checking the chart package and installer bundle before cutting the real release.

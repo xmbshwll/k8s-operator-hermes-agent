@@ -3,13 +3,23 @@ Thank you for installing {{ .Chart.Name }}.
 Your release is named {{ .Release.Name }}.
 
 The controller and CRDs have been installed in namespace {{ .Release.Namespace }}.
+{{- if and .Values.webhook.enabled .Values.certManager.enabled }}
+Admission webhooks are enabled and use cert-manager-managed certificates.
+{{- end }}
 
-To verify the installation:
+Verify the installation:
 
   kubectl get pods -n {{ .Release.Namespace }}
-  kubectl get customresourcedefinitions
+  kubectl get customresourcedefinitions hermesagents.hermes.nous.ai
+  helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
 
-To learn more about the release, try:
+Next steps:
 
-  $ helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
-  $ helm get all {{ .Release.Name }} -n {{ .Release.Namespace }}
+  1. Create a HermesAgent from the sample catalog under config/samples/
+  2. Describe the resource for status and events:
+       kubectl describe hermesagent <name> -n <namespace>
+  3. Read the user docs:
+       README.md
+       docs/api-reference.md
+       docs/helm-values.md
+       docs/troubleshooting.md

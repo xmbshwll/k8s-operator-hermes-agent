@@ -30,10 +30,9 @@ spec:
         control-plane: controller-manager
         app.kubernetes.io/name: k8s-operator-hermes-agent
     spec:
-      # TODO(user): Uncomment the following code to configure the nodeAffinity expression
-      # according to the platforms which are supported by your solution.
-      # It is considered best practice to support multiple architectures. You can
-      # build your manager image using the makefile target docker-buildx.
+      # If you need to constrain the controller-manager to specific architectures,
+      # add node affinity here. Multi-architecture manager images can be built with
+      # `make docker-buildx`.
       # affinity:
       #   nodeAffinity:
       #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -84,7 +83,7 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
-        # TODO(user): Configure the resources accordingly based on the project requirements.
+        # Tune these resource values for your target cluster and controller load.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
           limits:

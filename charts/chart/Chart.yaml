@@ -2,6 +2,13 @@ apiVersion: v2
 name: k8s-operator-hermes-agent
 description: Helm chart for installing the Hermes Kubernetes operator
 type: application
+home: https://github.com/xmbshwll/k8s-operator-hermes-agent
+sources:
+  - https://github.com/xmbshwll/k8s-operator-hermes-agent
+kubeVersion: ">=1.31.0-0"
+maintainers:
+  - name: xmbshwll
+    url: https://github.com/xmbshwll
 
 version: 0.1.0
 appVersion: "0.1.0"
