@@ -117,9 +117,9 @@ It also enforces cross-field rules such as mutually exclusive config sources and
 The operator uses exec probes rather than HTTP probes for Hermes itself.
 
 That is because Hermes does not expose a native Kubernetes-style readiness endpoint. Instead, probe logic checks:
-- the Hermes pid file
-- the gateway state file
-- optionally, whether a platform is actually connected
+- the Hermes pid file metadata and extracts the numeric `pid`
+- the gateway state file reports `gateway_state: "running"`
+- optionally, whether any `platforms.*.state` entry is actually `"connected"`
 
 This keeps health checking close to Hermes' real runtime state instead of inventing a sidecar or synthetic HTTP server just for Kubernetes.
 

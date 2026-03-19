@@ -160,7 +160,7 @@ spec:
 Defaults are admission-webhook driven and intentionally differ per probe type.
 Do not assume the same defaults for startup, readiness, and liveness.
 
-`requireConnectedPlatform: true` makes readiness stricter by requiring a connected platform state in the Hermes gateway state file.
+`requireConnectedPlatform: true` makes readiness stricter by requiring `gateway_state: "running"` and at least one `platforms.*.state: "connected"` entry in `gateway_state.json`.
 
 ## Optional Service
 

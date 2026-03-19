@@ -572,11 +572,12 @@ func hermesReadinessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
 		return nil
 	}
 
-	checks := []string{probeProcessCheck()}
+	checks := []string{
+		probeProcessCheck(),
+		probeGatewayStateCheck("running"),
+	}
 	if agent.Spec.Probes.RequireConnectedPlatform {
-		checks = append(checks, probeConnectedPlatformCheck())
-	} else {
-		checks = append(checks, fmt.Sprintf("test -s %s", shellQuote(hermesGatewayStatePath())))
+		checks = append(checks, probeAnyConnectedPlatformConnectedCheck())
 	}
 
 	return buildExecProbe(config, probeCommand(checks...))
@@ -683,12 +684,17 @@ func joinWithAnd(checks []string) string {
 
 func probeProcessCheck() string {
 	pidPath := shellQuote(hermesGatewayPIDPath())
-	return fmt.Sprintf("pid=$(cat %s) && [ -n \"$pid\" ] && kill -0 \"$pid\"", pidPath)
+	return fmt.Sprintf("test -s %[1]s && pid=$(tr -d '\\n' < %[1]s | grep -Eo '\"pid\"[[:space:]]*:[[:space:]]*[0-9]+' | grep -Eo '[0-9]+' | head -n1) && [ -n \"$pid\" ] && kill -0 \"$pid\"", pidPath)
 }
 
-func probeConnectedPlatformCheck() string {
+func probeGatewayStateCheck(expectedState string) string {
 	statePath := shellQuote(hermesGatewayStatePath())
-	return fmt.Sprintf("test -s %s && grep -Eq '\"connected\"[[:space:]]*:[[:space:]]*true' %s", statePath, statePath)
+	return fmt.Sprintf("test -s %[1]s && tr -d '\\n' < %[1]s | grep -Eq '\"gateway_state\"[[:space:]]*:[[:space:]]*\"%s\"'", statePath, expectedState)
+}
+
+func probeAnyConnectedPlatformConnectedCheck() string {
+	statePath := shellQuote(hermesGatewayStatePath())
+	return fmt.Sprintf("test -s %[1]s && tr -d '\\n' < %[1]s | grep -Eq '\"platforms\"[[:space:]]*:[[:space:]]*\\{.*\"state\"[[:space:]]*:[[:space:]]*\"connected\"'", statePath)
 }
 
 func hermesGatewayPIDPath() string {

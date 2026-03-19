@@ -18,6 +18,9 @@ boot_count_file="$HERMES_HOME/boot-count"
 pid_file="$HERMES_HOME/gateway.pid"
 state_file="$HERMES_HOME/gateway_state.json"
 config_file="$HERMES_HOME/config.yaml"
+platform_name="${HERMES_E2E_PLATFORM:-}"
+connected_delay_seconds="${HERMES_E2E_CONNECTED_DELAY_SECONDS:-0}"
+start_epoch="$(date +%s)"
 
 boot_count=0
 if [[ -f "$boot_count_file" ]]; then
@@ -31,10 +34,46 @@ if [[ -f "$config_file" ]]; then
   config_hash="$(sha256sum "$config_file" | awk '{print $1}')"
 fi
 
+json_timestamp() {
+  date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+platform_state() {
+  if [[ -z "$platform_name" ]]; then
+    return 1
+  fi
+
+  local now elapsed
+  now="$(date +%s)"
+  elapsed="$((now - start_epoch))"
+  if (( elapsed >= connected_delay_seconds )); then
+    printf 'connected'
+    return 0
+  fi
+
+  printf 'disconnected'
+}
+
+write_pid_metadata() {
+  cat > "$pid_file" <<JSON
+{"pid": $$, "kind": "hermes-gateway", "argv": ["hermes", "gateway"], "start_time": ${start_epoch}}
+JSON
+}
+
 write_state() {
-  printf '%s\n' "$$" > "$pid_file"
+  local updated_at platform_payload current_platform_state
+  updated_at="$(json_timestamp)"
+  platform_payload='{}'
+
+  if current_platform_state="$(platform_state)"; then
+    platform_payload=$(cat <<JSON
+{"${platform_name}": {"state": "${current_platform_state}", "updated_at": "${updated_at}"}}
+JSON
+)
+  fi
+
   cat > "$state_file" <<JSON
-{"connected": true, "bootCount": ${boot_count}, "configHash": "${config_hash}"}
+{"pid": $$, "kind": "hermes-gateway", "argv": ["hermes", "gateway"], "start_time": ${start_epoch}, "gateway_state": "running", "exit_reason": null, "platforms": ${platform_payload}, "bootCount": ${boot_count}, "configHash": "${config_hash}", "updated_at": "${updated_at}"}
 JSON
 }
 
@@ -44,8 +83,10 @@ cleanup() {
 }
 trap cleanup TERM INT
 
+write_pid_metadata
 write_state
 while true; do
+  write_pid_metadata
   write_state
   sleep 2
 done

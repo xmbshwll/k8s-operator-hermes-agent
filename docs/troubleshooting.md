@@ -87,6 +87,8 @@ Focus on:
 - startup probe failures
 - readiness probe failures
 - missing `gateway.pid` or `gateway_state.json`
+- `gateway_state.json` never reaching `gateway_state: "running"`
+- strict readiness waiting for any `platforms.*.state: "connected"`
 - image pull errors
 
 Fix:
@@ -106,6 +108,8 @@ The runtime image must:
 - include `hermes` in `PATH`
 - support `hermes gateway`
 - tolerate `HERMES_HOME=/data/hermes`
+- write JSON metadata to `gateway.pid` with a numeric `pid` field
+- write `gateway_state.json` with `gateway_state` and, when strict readiness is used, `platforms.*.state`
 - run as non-root
 - support `bash -ec` probe commands
 

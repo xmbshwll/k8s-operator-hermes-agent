@@ -33,6 +33,7 @@ File: `hermes_v1alpha1_hermesagent_telegram.yaml`
 - Includes a placeholder `Secret` for Telegram credentials and model provider keys
 - Imports secrets into the pod environment with `envFrom`
 - Enables stricter readiness checks with `requireConnectedPlatform: true`
+- Waits for `gateway_state.json` to report `gateway_state: "running"` and at least one `platforms.*.state: "connected"`
 - Secret updates trigger a reconcile and pod rollout
 - Good for a real messaging deployment path
 - Useful for validating webhook, secret, and connected-platform readiness behavior

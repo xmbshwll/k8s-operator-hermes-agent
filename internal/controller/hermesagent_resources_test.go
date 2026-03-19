@@ -110,6 +110,19 @@ func requireExecProbe(t *testing.T, probe *corev1.Probe, commandParts ...string)
 	}
 }
 
+func requireExecProbeExcludes(t *testing.T, probe *corev1.Probe, commandParts ...string) {
+	t.Helper()
+
+	if probe == nil || probe.Exec == nil {
+		t.Fatalf("expected exec probe, got %+v", probe)
+	}
+	for _, part := range commandParts {
+		if strings.Contains(probe.Exec.Command[2], part) {
+			t.Fatalf("expected probe command %q not to contain %q", probe.Exec.Command[2], part)
+		}
+	}
+}
+
 func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason string) {
 	t.Helper()
 
@@ -552,15 +565,43 @@ func TestBuildStatefulSetConfiguresHermesProbes(t *testing.T) {
 		t.Fatalf("expected startup probe failure threshold %d, got %d", startupFailureThreshold, container.StartupProbe.FailureThreshold)
 	}
 
-	requireExecProbe(t, container.ReadinessProbe, "kill -0", hermesGatewayPIDFile, "\"connected\"")
+	requireExecProbe(t, container.ReadinessProbe,
+		"grep -Eo '\"pid\"[[:space:]]*:[[:space:]]*[0-9]+'",
+		"kill -0",
+		"\"gateway_state\"[[:space:]]*:[[:space:]]*\"running\"",
+		"\"platforms\"[[:space:]]*:[[:space:]]*\\{.*\"state\"[[:space:]]*:[[:space:]]*\"connected\"",
+	)
+	requireExecProbeExcludes(t, container.ReadinessProbe, "\"connected\"[[:space:]]*:[[:space:]]*true")
 	if container.ReadinessProbe.InitialDelaySeconds != readinessInitialDelay {
 		t.Fatalf("expected readiness probe initial delay %d, got %d", readinessInitialDelay, container.ReadinessProbe.InitialDelaySeconds)
 	}
 
-	requireExecProbe(t, container.LivenessProbe, "kill -0", hermesGatewayPIDFile, hermesGatewayStateFile)
+	requireExecProbe(t, container.LivenessProbe,
+		"grep -Eo '\"pid\"[[:space:]]*:[[:space:]]*[0-9]+'",
+		"kill -0",
+		hermesGatewayStateFile,
+	)
 	if container.LivenessProbe.InitialDelaySeconds != livenessInitialDelay {
 		t.Fatalf("expected liveness probe initial delay %d, got %d", livenessInitialDelay, container.LivenessProbe.InitialDelaySeconds)
 	}
+}
+
+func TestBuildStatefulSetReadinessWithoutConnectedPlatformStillRequiresRunningGateway(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	readinessProbe := statefulSet.Spec.Template.Spec.Containers[0].ReadinessProbe
+	requireExecProbe(t, readinessProbe, "\"gateway_state\"[[:space:]]*:[[:space:]]*\"running\"")
+	requireExecProbeExcludes(t, readinessProbe,
+		"\"platforms\"[[:space:]]*:[[:space:]]*\\{.*\"state\"[[:space:]]*:[[:space:]]*\"connected\"",
+		"\"connected\"[[:space:]]*:[[:space:]]*true",
+	)
 }
 
 func TestBuildStatefulSetOmitsDisabledProbes(t *testing.T) {

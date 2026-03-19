@@ -53,7 +53,7 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		}, 3*time.Minute, time.Second).Should(Succeed())
 
 		By("creating a namespace for HermesAgent validation")
-			_, err = kubectl("create", "ns", hermesAgentNamespace)
+		_, err = kubectl("create", "ns", hermesAgentNamespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		By("rendering the sample HermesAgent with the end-to-end runtime image")
@@ -107,6 +107,90 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		waitForPodReady(statefulSetPodName(name))
 		bootCount := readBootCount(statefulSetPodName(name))
 		Expect(bootCount).To(BeNumerically(">=", 1))
+	})
+
+	It("keeps strict readiness false until a platform reports connected", func() {
+		name := "hermesagent-connected-platform"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+    repository: %s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {
+          "telegram": {}
+        }
+      }
+  env:
+    - name: HERMES_E2E_PLATFORM
+      value: telegram
+    - name: HERMES_E2E_CONNECTED_DELAY_SECONDS
+      value: "20"
+  probes:
+    startup:
+      enabled: true
+      periodSeconds: 2
+      failureThreshold: 15
+    readiness:
+      enabled: true
+      initialDelaySeconds: 0
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 1
+    liveness:
+      enabled: true
+      initialDelaySeconds: 0
+      periodSeconds: 2
+      timeoutSeconds: 1
+      failureThreshold: 3
+    requireConnectedPlatform: true
+`, name, hermesAgentNamespace, hermesRuntimeImage))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+
+		podName := statefulSetPodName(name)
+		waitForPodCreated(podName)
+
+		By("verifying Hermes reports a running gateway before any platform connects")
+		Eventually(func(g Gomega) {
+			state, err := kubectl("exec", "-n", hermesAgentNamespace, podName, "--", "cat", "/data/hermes/gateway_state.json")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(state).To(ContainSubstring(`"gateway_state": "running"`))
+			g.Expect(state).To(ContainSubstring(`"telegram": {"state": "disconnected"`))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("verifying the pod stays unready until a platform connects")
+		Consistently(func(g Gomega) {
+			status, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.conditions[?(@.type=='Ready')].status}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(status)).NotTo(Equal("True"))
+		}, 8*time.Second, time.Second).Should(Succeed())
+
+		By("waiting for the fake runtime to flip the platform to connected")
+		Eventually(func(g Gomega) {
+			state, err := kubectl("exec", "-n", hermesAgentNamespace, podName, "--", "cat", "/data/hermes/gateway_state.json")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(state).To(ContainSubstring(`"telegram": {"state": "connected"`))
+		}, 90*time.Second, time.Second).Should(Succeed())
+
+		By("verifying the pod and HermesAgent become ready after the connection appears")
+		waitForPodReady(podName)
+		waitForAgentPhase(name, "Ready")
 	})
 
 	It("preserves Hermes state across a StatefulSet pod restart", func() {
@@ -481,6 +565,14 @@ func statefulSetPodName(name string) string {
 
 func pvcName(name string) string {
 	return fmt.Sprintf("%s-data", name)
+}
+
+func waitForPodCreated(podName string) {
+	Eventually(func(g Gomega) {
+		name, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.name}")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(name)).To(Equal(podName))
+	}, 5*time.Minute, time.Second).Should(Succeed())
 }
 
 func waitForPodReady(podName string) {
