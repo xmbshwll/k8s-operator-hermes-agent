@@ -68,6 +68,18 @@ sha256_for_file() {
   sha256sum "$1" | awk '{print $1}'
 }
 
+append_file_content_block() {
+  local label="$1"
+  local target="$2"
+
+  printf '%s<<EOF\n' "$label" >> "$observed_report_file"
+  cat "$target" >> "$observed_report_file"
+  if [[ -s "$target" ]]; then
+    printf '\n' >> "$observed_report_file"
+  fi
+  printf 'EOF\n' >> "$observed_report_file"
+}
+
 append_observed_entry() {
   local target="$1"
 
@@ -84,12 +96,7 @@ append_observed_entry() {
       printf 'child=%s\n' "$child" >> "$observed_report_file"
       if [[ -f "$child" ]]; then
         printf 'child_sha256=%s\n' "$(sha256_for_file "$child")" >> "$observed_report_file"
-        printf 'child_content<<EOF\n' >> "$observed_report_file"
-        cat "$child" >> "$observed_report_file"
-        if [[ -s "$child" ]]; then
-          printf '\n' >> "$observed_report_file"
-        fi
-        printf 'EOF\n' >> "$observed_report_file"
+        append_file_content_block 'child_content' "$child"
       fi
     done < <(find "$target" -mindepth 1 -maxdepth 5 | LC_ALL=C sort)
     printf '\n' >> "$observed_report_file"
@@ -99,12 +106,8 @@ append_observed_entry() {
   printf 'path=%s\n' "$target" >> "$observed_report_file"
   printf 'type=file\n' >> "$observed_report_file"
   printf 'sha256=%s\n' "$(sha256_for_file "$target")" >> "$observed_report_file"
-  printf 'content<<EOF\n' >> "$observed_report_file"
-  cat "$target" >> "$observed_report_file"
-  if [[ -s "$target" ]]; then
-    printf '\n' >> "$observed_report_file"
-  fi
-  printf 'EOF\n\n' >> "$observed_report_file"
+  append_file_content_block 'content' "$target"
+  printf '\n' >> "$observed_report_file"
 }
 
 write_pid_metadata() {
