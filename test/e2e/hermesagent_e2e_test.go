@@ -508,9 +508,7 @@ spec:
 		_, err = kubectl("patch", "configmap", configMapName, "-n", hermesAgentNamespace, "--type=merge", "-p", patch)
 		Expect(err).NotTo(HaveOccurred())
 
-		By("waiting for the rollout triggered by the referenced ConfigMap")
-		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
-		Expect(err).NotTo(HaveOccurred())
+		By("waiting for the pod to be recreated from the referenced ConfigMap update")
 		Eventually(func(g Gomega) {
 			newUID, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
 			g.Expect(err).NotTo(HaveOccurred())
