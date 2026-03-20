@@ -5,8 +5,6 @@ package e2e
 
 import (
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -243,20 +241,10 @@ spec:
 		Expect(err).NotTo(HaveOccurred())
 		waitForAgentPhase(name, "Ready")
 
-		stopPortForward := startServicePortForward(name, 18080, 8080)
-		defer stopPortForward()
-
-		Eventually(func(g Gomega) {
-			response, err := http.Get("http://127.0.0.1:18080/")
-			g.Expect(err).NotTo(HaveOccurred())
-			defer response.Body.Close()
-
-			body, err := io.ReadAll(response.Body)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(response.StatusCode).To(Equal(http.StatusOK))
-			g.Expect(string(body)).To(ContainSubstring("gateway_state=running"))
-			g.Expect(string(body)).To(ContainSubstring("path=/data/hermes/gateway_state.json"))
-		}, 2*time.Minute, time.Second).Should(Succeed())
+		report, err := readServiceReportFromCluster(name, 8080)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(report).To(ContainSubstring("gateway_state=running"))
+		Expect(report).To(ContainSubstring("path=/data/hermes/gateway_state.json"))
 	})
 
 	It("mounts plugin bundles and rolls out updated plugin content", func() {
@@ -822,28 +810,28 @@ func readObservedReport(podName string) (string, error) {
 	return kubectl("exec", "-n", hermesAgentNamespace, podName, "--", "cat", "/data/hermes/e2e-observed-paths.txt")
 }
 
-func startServicePortForward(serviceName string, localPort, remotePort int) func() {
-	cmd := exec.Command("kubectl", "port-forward", "-n", hermesAgentNamespace, fmt.Sprintf("service/%s", serviceName), fmt.Sprintf("%d:%d", localPort, remotePort))
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	Expect(cmd.Start()).To(Succeed())
+func readServiceReportFromCluster(serviceName string, remotePort int) (string, error) {
+	curlPodName := fmt.Sprintf("curl-%s", serviceName)
+	serviceURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/", serviceName, hermesAgentNamespace, remotePort)
+	command := fmt.Sprintf("for i in $(seq 1 60); do curl -fsS %q && exit 0 || sleep 2; done; exit 1", serviceURL)
 
-	Eventually(func() error {
-		response, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/", localPort))
-		if err != nil {
-			return err
-		}
-		defer response.Body.Close()
-		return nil
-	}, 30*time.Second, 500*time.Millisecond).Should(Succeed())
-
-	return func() {
-		if cmd.Process == nil {
-			return
-		}
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+	_, _ = kubectl("delete", "pod", curlPodName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
+	if _, err := kubectl(
+		"run", curlPodName,
+		"--restart=Never",
+		"-n", hermesAgentNamespace,
+		"--image=curlimages/curl:latest",
+		"--command", "--",
+		"sh", "-c", command,
+	); err != nil {
+		return "", err
 	}
+	defer kubectl("delete", "pod", curlPodName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
+
+	if _, err := kubectl("wait", "pod", curlPodName, "-n", hermesAgentNamespace, "--for=jsonpath={.status.phase}=Succeeded", "--timeout=3m"); err != nil {
+		return "", err
+	}
+	return kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
 }
 
 func readBootCount(podName string) int {
