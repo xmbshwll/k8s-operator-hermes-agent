@@ -1,8 +1,8 @@
 # Hermes Kubernetes Operator
 
-A Kubernetes operator for running Hermes Agent as a stateful, long-lived gateway workload.
+A Kubernetes operator for running [Hermes Agent](https://github.com/NousResearch/hermes-agent) as a stateful, long-lived gateway workload.
 
-The operator manages a `HermesAgent` custom resource and reconciles the Kubernetes objects needed to run it safely in-cluster:
+The operator manages a [Hermes Agent](https://github.com/NousResearch/hermes-agent) custom resource and reconciles the Kubernetes objects needed to run it safely in-cluster:
 - a singleton `StatefulSet`
 - persistent storage for `HERMES_HOME`
 - generated or referenced configuration files
