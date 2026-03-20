@@ -241,6 +241,7 @@ spec:
 		Expect(err).NotTo(HaveOccurred())
 		waitForAgentPhase(name, "Ready")
 
+		waitForServiceEndpointsReady(name)
 		report, err := readServiceReportFromCluster(name, 8080)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(report).To(ContainSubstring("gateway_state=running"))
@@ -798,6 +799,19 @@ func waitForAgentPhase(name, phase string) {
 	}, 5*time.Minute, time.Second).Should(Succeed())
 }
 
+func waitForServiceEndpointsReady(serviceName string) {
+	Eventually(func(g Gomega) {
+		output, err := kubectl(
+			"get", "endpointslices.discovery.k8s.io",
+			"-n", hermesAgentNamespace,
+			"-l", fmt.Sprintf("kubernetes.io/service-name=%s", serviceName),
+			"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}",
+		)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(strings.TrimSpace(output)).NotTo(BeEmpty())
+	}, 2*time.Minute, time.Second).Should(Succeed())
+}
+
 func podUID(podName string) string {
 	uid, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.metadata.uid}")
 	Expect(err).NotTo(HaveOccurred())
@@ -826,10 +840,24 @@ func readServiceReportFromCluster(serviceName string, remotePort int) (string, e
 	}
 	defer kubectl("delete", "pod", curlPodName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
 
-	if _, err := kubectl("wait", "pod", curlPodName, "-n", hermesAgentNamespace, "--for=jsonpath={.status.phase}=Succeeded", "--timeout=3m"); err != nil {
-		return "", err
+	deadline := time.Now().Add(3 * time.Minute)
+	for time.Now().Before(deadline) {
+		phase, err := kubectl("get", "pod", curlPodName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+		if err == nil {
+			switch strings.TrimSpace(phase) {
+			case "Succeeded":
+				return kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+			case "Failed":
+				logs, _ := kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+				return "", fmt.Errorf("curl pod %s failed: %s", curlPodName, strings.TrimSpace(logs))
+			}
+		}
+		time.Sleep(time.Second)
 	}
-	return kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+
+	phase, _ := kubectl("get", "pod", curlPodName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+	logs, _ := kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+	return "", fmt.Errorf("curl pod %s did not complete in time (phase=%q): %s", curlPodName, strings.TrimSpace(phase), strings.TrimSpace(logs))
 }
 
 func readBootCount(podName string) int {
