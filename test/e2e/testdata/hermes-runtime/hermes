@@ -84,6 +84,12 @@ append_observed_entry() {
       printf 'child=%s\n' "$child" >> "$observed_report_file"
       if [[ -f "$child" ]]; then
         printf 'child_sha256=%s\n' "$(sha256_for_file "$child")" >> "$observed_report_file"
+        printf 'child_content<<EOF\n' >> "$observed_report_file"
+        cat "$child" >> "$observed_report_file"
+        if [[ -s "$child" ]]; then
+          printf '\n' >> "$observed_report_file"
+        fi
+        printf 'EOF\n' >> "$observed_report_file"
       fi
     done < <(find "$target" -mindepth 1 -maxdepth 5 | LC_ALL=C sort)
     printf '\n' >> "$observed_report_file"
