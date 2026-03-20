@@ -827,7 +827,7 @@ func readServiceReportFromCluster(serviceName string, remotePort int) (string, e
 	serviceURL := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d/", serviceName, hermesAgentNamespace, remotePort)
 	command := fmt.Sprintf("for i in $(seq 1 60); do curl -fsS %q && exit 0 || sleep 2; done; exit 1", serviceURL)
 
-	_, _ = kubectl("delete", "pod", curlPodName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
+	deletePodIgnoreNotFound(curlPodName)
 	if _, err := kubectl(
 		"run", curlPodName,
 		"--restart=Never",
@@ -838,26 +838,42 @@ func readServiceReportFromCluster(serviceName string, remotePort int) (string, e
 	); err != nil {
 		return "", err
 	}
-	defer kubectl("delete", "pod", curlPodName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
+	defer deletePodIgnoreNotFound(curlPodName)
 
 	deadline := time.Now().Add(3 * time.Minute)
 	for time.Now().Before(deadline) {
-		phase, err := kubectl("get", "pod", curlPodName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+		phase, err := podPhase(curlPodName)
 		if err == nil {
-			switch strings.TrimSpace(phase) {
+			switch phase {
 			case "Succeeded":
-				return kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+				return podLogs(curlPodName)
 			case "Failed":
-				logs, _ := kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
+				logs, _ := podLogs(curlPodName)
 				return "", fmt.Errorf("curl pod %s failed: %s", curlPodName, strings.TrimSpace(logs))
 			}
 		}
 		time.Sleep(time.Second)
 	}
 
-	phase, _ := kubectl("get", "pod", curlPodName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
-	logs, _ := kubectl("logs", curlPodName, "-n", hermesAgentNamespace)
-	return "", fmt.Errorf("curl pod %s did not complete in time (phase=%q): %s", curlPodName, strings.TrimSpace(phase), strings.TrimSpace(logs))
+	phase, _ := podPhase(curlPodName)
+	logs, _ := podLogs(curlPodName)
+	return "", fmt.Errorf("curl pod %s did not complete in time (phase=%q): %s", curlPodName, phase, strings.TrimSpace(logs))
+}
+
+func deletePodIgnoreNotFound(podName string) {
+	_, _ = kubectl("delete", "pod", podName, "-n", hermesAgentNamespace, "--ignore-not-found=true")
+}
+
+func podPhase(podName string) (string, error) {
+	phase, err := kubectl("get", "pod", podName, "-n", hermesAgentNamespace, "-o", "jsonpath={.status.phase}")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(phase), nil
+}
+
+func podLogs(podName string) (string, error) {
+	return kubectl("logs", podName, "-n", hermesAgentNamespace)
 }
 
 func readBootCount(podName string) int {
