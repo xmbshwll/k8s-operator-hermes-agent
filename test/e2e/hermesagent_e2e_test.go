@@ -130,7 +130,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
@@ -166,7 +166,7 @@ spec:
       timeoutSeconds: 1
       failureThreshold: 3
     requireConnectedPlatform: true
-`, name, hermesAgentNamespace, hermesRuntimeImage))
+`, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -215,7 +215,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
@@ -232,7 +232,7 @@ spec:
   service:
     enabled: true
     port: 8080
-`, name, hermesAgentNamespace, hermesRuntimeImage))
+`, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -280,7 +280,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
@@ -296,7 +296,7 @@ spec:
       value: /var/run/hermes/secrets/%s
   secretRefs:
     - name: %s
-`, pluginSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, pluginSecretName, pluginSecretName))
+`, pluginSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    "), pluginSecretName, pluginSecretName))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -408,20 +408,20 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
     configMapRef:
       name: shared-config
       key: config.yaml
-`, hermesAgentNamespace, hermesRuntimeImage))
+`, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 
 		output, err := kubectl("apply", "-f", manifest)
 		Expect(err).To(HaveOccurred())
-		Expect(output).To(ContainSubstring("raw and configMapRef are mutually exclusive"))
+		Expect(output).To(ContainSubstring("raw, configMapRef, and secretRef are mutually exclusive"))
 	})
 
 	It("surfaces missing referenced config through status and events", func() {
@@ -434,7 +434,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     configMapRef:
       name: missing-config
@@ -444,7 +444,7 @@ spec:
       {
         "platforms": {}
       }
-`, name, hermesAgentNamespace, hermesRuntimeImage))
+`, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -489,7 +489,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     configMapRef:
       name: %s
@@ -499,7 +499,7 @@ spec:
       {
         "platforms": {}
       }
-`, configMapName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, configMapName))
+`, configMapName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    "), configMapName))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -569,7 +569,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
@@ -585,7 +585,7 @@ spec:
         name: %s
   secretRefs:
     - name: %s
-`, envSecretName, hermesAgentNamespace, mountSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImage, envSecretName, mountSecretName))
+`, envSecretName, hermesAgentNamespace, mountSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    "), envSecretName, mountSecretName))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -626,7 +626,7 @@ metadata:
   namespace: %s
 spec:
   image:
-    repository: %s
+%s
   config:
     raw: |
       model: anthropic/claude-opus-4.1
@@ -646,7 +646,7 @@ spec:
       - 8443
     additionalUDPPorts:
       - 3478
-`, name, hermesAgentNamespace, hermesRuntimeImage))
+`, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
 		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
@@ -711,6 +711,11 @@ func splitImageReference(image string) (string, string) {
 		return image, "latest"
 	}
 	return image[:lastColon], image[lastColon+1:]
+}
+
+func hermesRuntimeImageSpecYAML(indent string) string {
+	repository, tag := splitImageReference(hermesRuntimeImage)
+	return fmt.Sprintf("%srepository: %s\n%stag: %s\n%spullPolicy: IfNotPresent", indent, repository, indent, tag, indent)
 }
 
 func renderManifest(content string) (string, error) {
