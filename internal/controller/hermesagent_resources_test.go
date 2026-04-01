@@ -180,6 +180,27 @@ func requireNetworkPolicyPort(t *testing.T, ports []networkingv1.NetworkPolicyPo
 	t.Fatalf("expected NetworkPolicy port %s/%d in %+v", protocol, port, ports)
 }
 
+func requireNetworkPolicyCIDRPeer(t *testing.T, peers []networkingv1.NetworkPolicyPeer, cidr string, except ...string) {
+	t.Helper()
+
+	for _, peer := range peers {
+		if peer.IPBlock == nil || peer.IPBlock.CIDR != cidr {
+			continue
+		}
+		if len(peer.IPBlock.Except) != len(except) {
+			t.Fatalf("expected peer %s except %+v, got %+v", cidr, except, peer.IPBlock.Except)
+		}
+		for i := range except {
+			if peer.IPBlock.Except[i] != except[i] {
+				t.Fatalf("expected peer %s except %+v, got %+v", cidr, except, peer.IPBlock.Except)
+			}
+		}
+		return
+	}
+
+	t.Fatalf("expected NetworkPolicy peer with cidr %s in %+v", cidr, peers)
+}
+
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
@@ -710,6 +731,43 @@ func TestBuildNetworkPolicyUsesEgressOnlyDefaults(t *testing.T) {
 	}
 	requireNetworkPolicyPort(t, webRule.Ports, corev1.ProtocolTCP, networkPolicyHTTPPort)
 	requireNetworkPolicyPort(t, webRule.Ports, corev1.ProtocolTCP, networkPolicyHTTPSPort)
+}
+
+func TestBuildNetworkPolicyUsesDestinationAwarePeersWhenConfigured(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+	agent.Spec.Terminal.Backend = terminalBackendSSH
+	agent.Spec.NetworkPolicy.Destinations = []hermesv1alpha1.HermesAgentNetworkPolicyPeer{{
+		CIDR:   "203.0.113.0/24",
+		Except: []string{"203.0.113.128/25"},
+	}, {
+		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": "shared-services"}},
+		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "proxy"}},
+	}}
+	agent.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443}
+	agent.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478}
+
+	networkPolicy := buildNetworkPolicy(agent, effectiveTerminalBackend(agent, referencedInputState{}))
+	if len(networkPolicy.Spec.Egress) != 5 {
+		t.Fatalf("expected 5 egress rules with destination-aware peers, got %d", len(networkPolicy.Spec.Egress))
+	}
+
+	dnsRule := networkPolicy.Spec.Egress[0]
+	if len(dnsRule.To) != 0 {
+		t.Fatalf("expected DNS rule to stay destination-agnostic, got %+v", dnsRule.To)
+	}
+
+	for _, ruleIndex := range []int{1, 2, 3, 4} {
+		rule := networkPolicy.Spec.Egress[ruleIndex]
+		if len(rule.To) != 2 {
+			t.Fatalf("expected rule %d to include 2 destination peers, got %+v", ruleIndex, rule.To)
+		}
+		requireNetworkPolicyCIDRPeer(t, rule.To, "203.0.113.0/24", "203.0.113.128/25")
+		if rule.To[1].NamespaceSelector == nil && rule.To[0].NamespaceSelector == nil {
+			t.Fatalf("expected rule %d to include a selector-based peer, got %+v", ruleIndex, rule.To)
+		}
+	}
 }
 
 func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {

@@ -19,12 +19,14 @@ package v1alpha1
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	pathpkg "path"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1validation "k8s.io/apimachinery/pkg/apis/meta/v1/validation"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -398,8 +400,42 @@ func validateService(path *field.Path, service hermesv1alpha1.HermesAgentService
 
 func validateNetworkPolicy(path *field.Path, networkPolicy hermesv1alpha1.HermesAgentNetworkPolicySpec) field.ErrorList {
 	allErrs := field.ErrorList{}
+	allErrs = append(allErrs, validateNetworkPolicyDestinations(path.Child("destinations"), networkPolicy.Destinations)...)
 	allErrs = append(allErrs, validateNetworkPolicyPorts(path.Child("additionalTCPPorts"), networkPolicy.AdditionalTCPPorts)...)
 	allErrs = append(allErrs, validateNetworkPolicyPorts(path.Child("additionalUDPPorts"), networkPolicy.AdditionalUDPPorts)...)
+	return allErrs
+}
+
+func validateNetworkPolicyDestinations(path *field.Path, destinations []hermesv1alpha1.HermesAgentNetworkPolicyPeer) field.ErrorList {
+	allErrs := field.ErrorList{}
+	for i, destination := range destinations {
+		destinationPath := path.Index(i)
+		hasCIDR := destination.CIDR != ""
+		hasNamespaceSelector := destination.NamespaceSelector != nil
+		hasPodSelector := destination.PodSelector != nil
+		if !hasCIDR && !hasNamespaceSelector && !hasPodSelector {
+			allErrs = append(allErrs, field.Invalid(destinationPath, destination, "at least one of cidr, namespaceSelector, or podSelector must be set"))
+		}
+		if hasCIDR {
+			if _, err := netip.ParsePrefix(destination.CIDR); err != nil {
+				allErrs = append(allErrs, field.Invalid(destinationPath.Child("cidr"), destination.CIDR, fmt.Sprintf("must be a valid CIDR: %v", err)))
+			}
+		}
+		if len(destination.Except) > 0 && !hasCIDR {
+			allErrs = append(allErrs, field.Invalid(destinationPath.Child("except"), destination.Except, "except requires cidr to be set"))
+		}
+		for exceptIndex, cidr := range destination.Except {
+			if _, err := netip.ParsePrefix(cidr); err != nil {
+				allErrs = append(allErrs, field.Invalid(destinationPath.Child("except").Index(exceptIndex), cidr, fmt.Sprintf("must be a valid CIDR: %v", err)))
+			}
+		}
+		if destination.NamespaceSelector != nil {
+			allErrs = append(allErrs, metav1validation.ValidateLabelSelector(destination.NamespaceSelector, metav1validation.LabelSelectorValidationOptions{}, destinationPath.Child("namespaceSelector"))...)
+		}
+		if destination.PodSelector != nil {
+			allErrs = append(allErrs, metav1validation.ValidateLabelSelector(destination.PodSelector, metav1validation.LabelSelectorValidationOptions{}, destinationPath.Child("podSelector"))...)
+		}
+	}
 	return allErrs
 }
 

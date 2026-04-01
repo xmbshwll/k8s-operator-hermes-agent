@@ -58,6 +58,7 @@ Before applying it:
 - replace the placeholder secret values
 - keep `spec.image` as the published `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30` reference, or swap in your own Hermes runtime image
 - keep `networkPolicy.enabled: true` unless you have a deliberate reason to widen egress manually
+- if you know the exact external or in-cluster destinations Hermes should reach, add `networkPolicy.destinations` to restrict non-DNS egress instead of relying on the broader port-only default
 
 Remove it with:
 
@@ -111,6 +112,7 @@ Before applying it:
 - set `config.raw.terminal.backend: ssh`; `spec.terminal.backend` is kept here only as an explicit fallback hint
 - the sample already uses `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`; swap it only if you need a different Hermes runtime image
 - leave `networkPolicy.enabled: true` unless you are intentionally supplying your own policy
+- when your SSH target and any required egress proxies have stable network identities, prefer `networkPolicy.destinations` over the broader port-only default
 
 Remove it with:
 

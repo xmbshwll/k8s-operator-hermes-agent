@@ -40,14 +40,14 @@ A `HermesAgent` resource lets you declare:
 - persistent storage settings
 - resource requests and limits
 - startup, readiness, and liveness probes
-- optional service exposure and egress NetworkPolicy generation, including extra TCP/UDP ports for newer workflows
+- optional service exposure and egress NetworkPolicy generation, including extra TCP/UDP ports and optional destination allowlists for newer workflows
 
 The controller then reconciles:
 - `ConfigMap` resources for inline config
 - a PVC for Hermes state when persistence is enabled
 - a singleton `StatefulSet`
 - an optional `Service`
-- an optional egress-focused `NetworkPolicy`, with configurable extra TCP/UDP ports when the defaults are too narrow
+- an optional egress-focused `NetworkPolicy`, with configurable extra TCP/UDP ports and optional destination allowlists when the defaults are too narrow
 
 ## Prerequisites
 

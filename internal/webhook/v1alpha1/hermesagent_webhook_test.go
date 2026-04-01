@@ -152,13 +152,19 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.config.secretRef.key"))
 		})
 
-		It("rejects invalid storage size, service port, network policy ports, empty image pull secrets, and invalid file mounts", func() {
+		It("rejects invalid storage size, service port, network policy destinations and ports, empty image pull secrets, and invalid file mounts", func() {
 			namespace := newNamespace()
 			invalidMode := int32(0o1000)
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-settings-%d", time.Now().UnixNano()))
 			obj.Spec.Storage.Persistence.Size = "0Gi"
 			obj.Spec.Service.Enabled = true
 			obj.Spec.Service.Port = -1
+			obj.Spec.NetworkPolicy.Destinations = []hermesv1alpha1.HermesAgentNetworkPolicyPeer{{
+				Except: []string{"10.0.0.0/24"},
+			}, {
+				CIDR:              "not-a-cidr",
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"bad key": "value"}},
+			}}
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{0}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{70000}
 			obj.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{}}
@@ -188,6 +194,10 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.storage.persistence.size"))
 			Expect(err.Error()).To(ContainSubstring("spec.service.port"))
+			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[0]"))
+			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[0].except"))
+			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[1].cidr"))
+			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[1].namespaceSelector.matchLabels"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalTCPPorts[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.additionalUDPPorts[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.imagePullSecrets[0].name"))

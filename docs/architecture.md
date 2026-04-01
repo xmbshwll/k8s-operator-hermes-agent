@@ -149,7 +149,9 @@ The default policy shape allows:
 
 The controller derives that effective backend from resolved `config.yaml` content, including referenced ConfigMaps when available. `spec.terminal.backend` only acts as a fallback when the config does not declare a backend.
 
-Users can widen the generated policy with additional TCP and UDP egress ports while keeping the same simple port-only shape. If they need destination-aware rules or a substantially different policy, the intended path is to disable operator-managed NetworkPolicy generation and supply their own manifest.
+Users can widen the generated policy with additional TCP and UDP egress ports, and they can optionally restrict non-DNS egress to explicit destination peers such as CIDR blocks or selector-based in-cluster targets. DNS stays destination-agnostic so name resolution keeps working without forcing users to model cluster DNS endpoints first.
+
+If they need a substantially different policy shape than that generated allowlist model, the intended path is still to disable operator-managed NetworkPolicy generation and supply their own manifest.
 
 ## Security defaults
 

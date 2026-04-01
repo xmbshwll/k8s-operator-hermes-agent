@@ -353,6 +353,16 @@ This is the supported Kubernetes exposure path for HTTP-oriented deployment stor
 spec:
   networkPolicy:
     enabled: true
+    destinations:
+      - cidr: 203.0.113.0/24
+        except:
+          - 203.0.113.128/25
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: shared-services
+        podSelector:
+          matchLabels:
+            app: egress-proxy
     additionalTCPPorts:
       - 8443
     additionalUDPPorts:
@@ -366,17 +376,28 @@ The default policy allows:
 - HTTPS
 - SSH when `terminal.backend: ssh`
 
-You can widen the generated policy with:
+You can widen or restrict the generated policy with:
+- `destinations` to restrict non-DNS egress to explicit CIDR blocks and/or selector-based peers
 - `additionalTCPPorts` for extra outbound TCP ports
 - `additionalUDPPorts` for extra outbound UDP ports
 
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | Whether the operator creates the NetworkPolicy |
+| `destinations` | array | empty | Optional destination allowlist applied to HTTP, HTTPS, SSH, and additional configured ports |
 | `additionalTCPPorts` | array | empty | Extra outbound TCP ports added to the generated policy |
 | `additionalUDPPorts` | array | empty | Extra outbound UDP ports added to the generated policy |
 
-The generated policy still allows egress by port only, to any destination. If you need destination-specific rules or a substantially different policy shape, disable `spec.networkPolicy.enabled` and manage your own NetworkPolicy instead.
+When `destinations` is omitted, the generated policy keeps the original port-only behavior for non-DNS egress.
+When `destinations` is set, the operator still leaves DNS destination-agnostic so name resolution continues to work, but it restricts HTTP, HTTPS, SSH, and additional configured ports to the listed peers.
+
+Each destination peer must set at least one of:
+- `cidr`
+- `namespaceSelector`
+- `podSelector`
+
+`except` is only valid together with `cidr`.
+If you need a substantially different policy shape than this generated allowlist model, disable `spec.networkPolicy.enabled` and manage your own NetworkPolicy instead.
 
 As with Service management, a same-name non-owned NetworkPolicy causes reconciliation to fail.
 
@@ -409,7 +430,7 @@ The webhook currently rejects:
 - invalid file mount source combinations or duplicate file mount paths
 - invalid storage sizes
 - invalid enabled Service ports
-- invalid additional NetworkPolicy ports
+- invalid NetworkPolicy destination peers or additional ports
 
 It also defaults:
 - mode

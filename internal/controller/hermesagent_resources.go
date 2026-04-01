@@ -426,25 +426,26 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 
 func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend string) *networkingv1.NetworkPolicy {
 	labels := resourceLabels(agent)
+	destinations := networkPolicyPeers(agent.Spec.NetworkPolicy.Destinations)
 	egress := []networkingv1.NetworkPolicyEgressRule{
-		networkPolicyRule(
+		networkPolicyRule(nil,
 			append(networkPolicyPorts(corev1.ProtocolUDP, []int32{networkPolicyDNSPort}), networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicyDNSPort})...)...,
 		),
-		networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicyHTTPPort, networkPolicyHTTPSPort})...),
+		networkPolicyRule(destinations, networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicyHTTPPort, networkPolicyHTTPSPort})...),
 	}
 
 	defaultTCPPorts := networkPolicyPortSet(networkPolicyDNSPort, networkPolicyHTTPPort, networkPolicyHTTPSPort)
 	defaultUDPPorts := networkPolicyPortSet(networkPolicyDNSPort)
 	if terminalBackend == terminalBackendSSH {
 		defaultTCPPorts[networkPolicySSHPort] = struct{}{}
-		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicySSHPort})...))
+		egress = append(egress, networkPolicyRule(destinations, networkPolicyPorts(corev1.ProtocolTCP, []int32{networkPolicySSHPort})...))
 	}
 
 	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalTCPPorts, defaultTCPPorts); len(ports) > 0 {
-		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolTCP, ports)...))
+		egress = append(egress, networkPolicyRule(destinations, networkPolicyPorts(corev1.ProtocolTCP, ports)...))
 	}
 	if ports := additionalNetworkPolicyPorts(agent.Spec.NetworkPolicy.AdditionalUDPPorts, defaultUDPPorts); len(ports) > 0 {
-		egress = append(egress, networkPolicyRule(networkPolicyPorts(corev1.ProtocolUDP, ports)...))
+		egress = append(egress, networkPolicyRule(destinations, networkPolicyPorts(corev1.ProtocolUDP, ports)...))
 	}
 
 	return &networkingv1.NetworkPolicy{
@@ -1085,8 +1086,34 @@ func networkPolicyPortSet(ports ...int32) map[int32]struct{} {
 	return set
 }
 
-func networkPolicyRule(ports ...networkingv1.NetworkPolicyPort) networkingv1.NetworkPolicyEgressRule {
-	return networkingv1.NetworkPolicyEgressRule{Ports: ports}
+func networkPolicyRule(to []networkingv1.NetworkPolicyPeer, ports ...networkingv1.NetworkPolicyPort) networkingv1.NetworkPolicyEgressRule {
+	return networkingv1.NetworkPolicyEgressRule{To: to, Ports: ports}
+}
+
+func networkPolicyPeers(peers []hermesv1alpha1.HermesAgentNetworkPolicyPeer) []networkingv1.NetworkPolicyPeer {
+	if len(peers) == 0 {
+		return nil
+	}
+
+	converted := make([]networkingv1.NetworkPolicyPeer, 0, len(peers))
+	for _, peer := range peers {
+		converted = append(converted, networkingv1.NetworkPolicyPeer{
+			IPBlock:           networkPolicyIPBlock(peer),
+			NamespaceSelector: peer.NamespaceSelector.DeepCopy(),
+			PodSelector:       peer.PodSelector.DeepCopy(),
+		})
+	}
+	return converted
+}
+
+func networkPolicyIPBlock(peer hermesv1alpha1.HermesAgentNetworkPolicyPeer) *networkingv1.IPBlock {
+	if peer.CIDR == "" {
+		return nil
+	}
+	return &networkingv1.IPBlock{
+		CIDR:   peer.CIDR,
+		Except: append([]string{}, peer.Except...),
+	}
 }
 
 func networkPolicyPorts(protocol corev1.Protocol, ports []int32) []networkingv1.NetworkPolicyPort {

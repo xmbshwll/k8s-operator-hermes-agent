@@ -189,10 +189,34 @@ type HermesAgentServiceSpec struct {
 	Port int32 `json:"port,omitempty"`
 }
 
+// HermesAgentNetworkPolicyPeer defines one allowed egress destination peer.
+type HermesAgentNetworkPolicyPeer struct {
+	// cidr is an allowed destination CIDR block.
+	// +optional
+	CIDR string `json:"cidr,omitempty"`
+
+	// except excludes destination CIDR blocks from cidr.
+	// +optional
+	Except []string `json:"except,omitempty"`
+
+	// namespaceSelector selects allowed destination namespaces.
+	// +optional
+	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
+
+	// podSelector selects allowed destination pods.
+	// +optional
+	PodSelector *metav1.LabelSelector `json:"podSelector,omitempty"`
+}
+
 // HermesAgentNetworkPolicySpec defines optional NetworkPolicy generation.
 type HermesAgentNetworkPolicySpec struct {
 	// enabled controls whether an egress-focused NetworkPolicy is created.
 	Enabled *bool `json:"enabled,omitempty"`
+
+	// destinations restrict non-DNS egress to explicit destination peers.
+	// When omitted, the generated policy keeps the default port-only behavior for HTTP, HTTPS, SSH, and additional configured ports.
+	// +optional
+	Destinations []HermesAgentNetworkPolicyPeer `json:"destinations,omitempty"`
 
 	// additionalTCPPorts adds extra TCP egress ports to the generated policy.
 	// Use this when your Hermes workflow needs outbound TCP beyond the default DNS, HTTP, HTTPS, and optional SSH rules.
