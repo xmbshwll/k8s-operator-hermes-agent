@@ -55,6 +55,8 @@ const (
 	phaseWorkloadError            = "WorkloadError"
 	phaseReady                    = "Ready"
 	reasonWaitingForPersistence   = "WaitingForPersistence"
+	reasonStatefulSetRollout      = "StatefulSetRolloutPending"
+	reasonStatefulSetWaitingReady = "StatefulSetWaitingForReadyReplicas"
 )
 
 // HermesAgentReconciler reconciles a HermesAgent object.
@@ -86,6 +88,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if _, err := buildConfigPlan(agent); err != nil {
 		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
 		})
 	}
@@ -93,6 +96,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	referencedInputs, err := r.resolveReferencedInputs(ctx, agent)
 	if err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "read referenced inputs", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "ReferencedInputsReadFailed", fmt.Sprintf("Could not read referenced ConfigMaps or Secrets: %v", err), "Referenced configuration inputs could not be read")
 		})
 	}
@@ -100,6 +104,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if missingMessages := missingReferenceMessages(referencedInputs); len(missingMessages) > 0 {
 		message := joinMessages(missingMessages)
 		return r.returnStatusFailure(ctx, agent, "missing referenced inputs", errors.New(message), func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "MissingReferencedInput", message, "Referenced configuration inputs are missing")
 		})
 	}
@@ -107,18 +112,21 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	plan, err := buildConfigPlanWithReferences(agent, referencedInputs)
 	if err != nil {
 		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
 		})
 	}
 
 	if err := r.reconcileGeneratedConfigMaps(ctx, agent, plan); err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "reconcile configmap", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
 			markConfigFailure(status, "ConfigMapReconcileFailed", err.Error(), "Inline configuration resources could not be reconciled")
 		})
 	}
 
 	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "reconcile pvc", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
 			markPersistenceFailure(status, err)
 		})
 	}
@@ -126,18 +134,21 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	inputs := buildPodTemplateInputs(agent, plan)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "reconcile statefulset", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "StatefulSetReconcileFailed", err.Error(), "Hermes workload could not be reconciled")
 		})
 	}
 
 	if err := r.reconcileService(ctx, agent); err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "reconcile service", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "ServiceReconcileFailed", err.Error(), "Hermes Service could not be reconciled")
 		})
 	}
 
 	if err := r.reconcileNetworkPolicy(ctx, agent, referencedInputs); err != nil {
 		return r.returnErrorWithStatus(ctx, agent, "reconcile networkpolicy", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "NetworkPolicyReconcileFailed", err.Error(), "Hermes NetworkPolicy could not be reconciled")
 		})
 	}
@@ -150,7 +161,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		"envFrom", len(inputs.EnvFrom),
 	)
 
-	if err := r.reconcileStatus(ctx, agent); err != nil {
+	if err := r.reconcileStatus(ctx, agent, plan.Hash); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -797,13 +808,14 @@ func joinMessages(messages []string) string {
 	return strings.Join(messages, "; ")
 }
 
-func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, configHash string) error {
 	statusView, err := r.readStatusView(ctx, agent)
 	if err != nil {
 		return err
 	}
 
 	return r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+		populateStatusMetadata(status, agent, configHash)
 		status.ReadyReplicas = statusView.readyReplicas
 		status.PersistenceBound = statusView.persistenceBound
 		setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
@@ -910,13 +922,36 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 	}
 
 	view.workloadConditionStatus = metav1.ConditionFalse
-	view.workloadReason = "StatefulSetProgressing"
-	view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas; inspect pod events, image pulls, and probe failures if rollout stalls", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
 	view.readyConditionStatus = metav1.ConditionFalse
+	view.phase = phaseWorkloadPending
+	if statefulSet.Status.ObservedGeneration < statefulSet.Generation {
+		view.workloadReason = reasonStatefulSetRollout
+		view.workloadMessage = fmt.Sprintf("StatefulSet %s rollout is pending: observed generation %d is behind desired generation %d", statefulSet.Name, statefulSet.Status.ObservedGeneration, statefulSet.Generation)
+		view.readyReason = view.workloadReason
+		view.readyMessage = view.workloadMessage
+		return view, nil
+	}
+
+	view.workloadReason = reasonStatefulSetWaitingReady
+	view.workloadMessage = fmt.Sprintf("StatefulSet %s has %d/%d ready replicas; inspect pod events, image pulls, and probe failures if rollout stalls", statefulSet.Name, statefulSet.Status.ReadyReplicas, desiredReplicas)
 	view.readyReason = view.workloadReason
 	view.readyMessage = view.workloadMessage
-	view.phase = phaseWorkloadPending
 	return view, nil
+}
+
+func populateStatusMetadata(status *hermesv1alpha1.HermesAgentStatus, agent *hermesv1alpha1.HermesAgent, configHash string) {
+	status.Image = hermesImage(agent.Spec.Image)
+	status.ConfigHash = configHash
+	if persistenceEnabled(agent) {
+		status.PersistentVolumeClaimName = persistentVolumeClaimName(agent.Name)
+	} else {
+		status.PersistentVolumeClaimName = ""
+	}
+	if serviceEnabled(agent) {
+		status.ServiceName = agent.Name
+	} else {
+		status.ServiceName = ""
+	}
 }
 
 func setCondition(status *hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason, message string) {

@@ -34,6 +34,16 @@ spec:
     - jsonPath: .status.persistenceBound
       name: Persistent
       type: boolean
+    - jsonPath: .status.serviceName
+      name: Service
+      type: string
+    - jsonPath: .status.persistentVolumeClaimName
+      name: PVC
+      type: string
+    - jsonPath: .status.image
+      name: Image
+      priority: 1
+      type: string
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -2064,6 +2074,13 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
+              configHash:
+                description: configHash is the currently observed Hermes config revision
+                  hash.
+                type: string
+              image:
+                description: image is the effective Hermes runtime image reference.
+                type: string
               lastReconcileTime:
                 description: lastReconcileTime records the last reconcile timestamp.
                 format: date-time
@@ -2076,6 +2093,10 @@ spec:
                 description: persistenceBound indicates whether the Hermes PVC is
                   bound.
                 type: boolean
+              persistentVolumeClaimName:
+                description: persistentVolumeClaimName is the name of the managed
+                  Hermes PVC when persistence is enabled.
+                type: string
               phase:
                 description: phase is a coarse-grained summary of HermesAgent state.
                 type: string
@@ -2083,6 +2104,10 @@ spec:
                 description: readyReplicas is the number of ready Hermes pods.
                 format: int32
                 type: integer
+              serviceName:
+                description: serviceName is the name of the managed Service when service
+                  exposure is enabled.
+                type: string
             type: object
         required:
         - spec

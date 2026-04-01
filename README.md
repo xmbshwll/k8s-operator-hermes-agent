@@ -202,6 +202,8 @@ kubectl get statefulsets,pvc,configmaps
 kubectl describe hermesagent hermesagent-sample
 ```
 
+`kubectl get hermesagents` now surfaces the phase, ready replicas, persistence state, managed Service name, and managed PVC name directly from status so common rollout and storage issues are visible without drilling into owned resources first.
+
 Watch the managed pod:
 
 ```sh

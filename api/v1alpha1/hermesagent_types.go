@@ -330,6 +330,14 @@ type HermesAgentStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
+	// image is the effective Hermes runtime image reference.
+	// +optional
+	Image string `json:"image,omitempty"`
+
+	// configHash is the currently observed Hermes config revision hash.
+	// +optional
+	ConfigHash string `json:"configHash,omitempty"`
+
 	// readyReplicas is the number of ready Hermes pods.
 	// +optional
 	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
@@ -337,6 +345,14 @@ type HermesAgentStatus struct {
 	// persistenceBound indicates whether the Hermes PVC is bound.
 	// +optional
 	PersistenceBound bool `json:"persistenceBound,omitempty"`
+
+	// persistentVolumeClaimName is the name of the managed Hermes PVC when persistence is enabled.
+	// +optional
+	PersistentVolumeClaimName string `json:"persistentVolumeClaimName,omitempty"`
+
+	// serviceName is the name of the managed Service when service exposure is enabled.
+	// +optional
+	ServiceName string `json:"serviceName,omitempty"`
 
 	// lastReconcileTime records the last reconcile timestamp.
 	// +optional
@@ -355,6 +371,9 @@ type HermesAgentStatus struct {
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=".status.readyReplicas"
 // +kubebuilder:printcolumn:name="Persistent",type=boolean,JSONPath=".status.persistenceBound"
+// +kubebuilder:printcolumn:name="Service",type=string,JSONPath=".status.serviceName"
+// +kubebuilder:printcolumn:name="PVC",type=string,JSONPath=".status.persistentVolumeClaimName"
+// +kubebuilder:printcolumn:name="Image",type=string,JSONPath=".status.image",priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=".metadata.creationTimestamp"
 
 // HermesAgent is the Schema for the hermesagents API.

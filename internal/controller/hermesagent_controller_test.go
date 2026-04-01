@@ -1776,8 +1776,24 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
 	if updatedAgent.Status.ObservedGeneration != updatedAgent.Generation {
 		t.Fatalf("expected observedGeneration %d, got %d", updatedAgent.Generation, updatedAgent.Status.ObservedGeneration)
+	}
+	if updatedAgent.Status.Image != "ghcr.io/example/hermes-agent:gateway-core" {
+		t.Fatalf("expected status image ghcr.io/example/hermes-agent:gateway-core, got %q", updatedAgent.Status.Image)
+	}
+	if updatedAgent.Status.ConfigHash != plan.Hash {
+		t.Fatalf("expected status configHash %q, got %q", plan.Hash, updatedAgent.Status.ConfigHash)
+	}
+	if updatedAgent.Status.PersistentVolumeClaimName != persistentVolumeClaimName(agent.Name) {
+		t.Fatalf("expected status PVC name %q, got %q", persistentVolumeClaimName(agent.Name), updatedAgent.Status.PersistentVolumeClaimName)
+	}
+	if updatedAgent.Status.ServiceName != "" {
+		t.Fatalf("expected empty status serviceName when service is disabled, got %q", updatedAgent.Status.ServiceName)
 	}
 	if updatedAgent.Status.Phase != phaseStoragePending {
 		t.Fatalf("expected phase StoragePending, got %q", updatedAgent.Status.Phase)
@@ -1857,6 +1873,22 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+	if updatedAgent.Status.Image != "ghcr.io/example/hermes-agent:gateway-core" {
+		t.Fatalf("expected status image ghcr.io/example/hermes-agent:gateway-core, got %q", updatedAgent.Status.Image)
+	}
+	if updatedAgent.Status.ConfigHash != plan.Hash {
+		t.Fatalf("expected status configHash %q, got %q", plan.Hash, updatedAgent.Status.ConfigHash)
+	}
+	if updatedAgent.Status.PersistentVolumeClaimName != persistentVolumeClaimName(agent.Name) {
+		t.Fatalf("expected status PVC name %q, got %q", persistentVolumeClaimName(agent.Name), updatedAgent.Status.PersistentVolumeClaimName)
+	}
+	if updatedAgent.Status.ServiceName != "" {
+		t.Fatalf("expected empty status serviceName when service is disabled, got %q", updatedAgent.Status.ServiceName)
+	}
 	if updatedAgent.Status.Phase != "Ready" {
 		t.Fatalf("expected phase Ready, got %q", updatedAgent.Status.Phase)
 	}
@@ -1874,6 +1906,152 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	requireConditionObservedGeneration(t, updatedAgent.Status, conditionTypePersistenceReady, updatedAgent.Generation)
 	requireConditionObservedGeneration(t, updatedAgent.Status, conditionTypeWorkloadReady, updatedAgent.Generation)
 	requireConditionObservedGeneration(t, updatedAgent.Status, conditionTypeReady, updatedAgent.Generation)
+}
+
+func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-status-service"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config:  hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1alpha1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile returned error: %v", err)
+	}
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	if updatedAgent.Status.ServiceName != agent.Name {
+		t.Fatalf("expected status serviceName %q, got %q", agent.Name, updatedAgent.Status.ServiceName)
+	}
+}
+
+func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+
+	baseAgent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-status-rollout"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+		},
+	}
+	boundPVC := &corev1.PersistentVolumeClaim{
+		ObjectMeta: metav1.ObjectMeta{Name: persistentVolumeClaimName(baseAgent.Name), Namespace: baseAgent.Namespace},
+		Spec:       corev1.PersistentVolumeClaimSpec{AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}},
+		Status:     corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
+	}
+
+	t.Run("rollout pending when observed generation lags", func(t *testing.T) {
+		agent := baseAgent.DeepCopy()
+		oneReplica := int32(1)
+		statefulSet := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: agent.Name, Namespace: agent.Namespace, Generation: 3},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &oneReplica},
+			Status: appsv1.StatefulSetStatus{
+				ObservedGeneration: 2,
+				ReadyReplicas:      1,
+			},
+		}
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+			WithObjects(agent, boundPVC.DeepCopy(), statefulSet).
+			Build()
+
+		reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+		req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+		if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+			t.Fatalf("reconcile returned error: %v", err)
+		}
+
+		updatedAgent := &hermesv1alpha1.HermesAgent{}
+		if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+			t.Fatalf("get HermesAgent returned error: %v", err)
+		}
+		requireStatusCondition(t, updatedAgent.Status, conditionTypeWorkloadReady, metav1.ConditionFalse, reasonStatefulSetRollout)
+		requireStatusCondition(t, updatedAgent.Status, conditionTypeReady, metav1.ConditionFalse, reasonStatefulSetRollout)
+	})
+
+	t.Run("waiting for ready replicas when generation is current", func(t *testing.T) {
+		agent := baseAgent.DeepCopy()
+		oneReplica := int32(1)
+		statefulSet := &appsv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{Name: agent.Name, Namespace: agent.Namespace, Generation: 3},
+			Spec:       appsv1.StatefulSetSpec{Replicas: &oneReplica},
+			Status: appsv1.StatefulSetStatus{
+				ObservedGeneration: 3,
+				ReadyReplicas:      0,
+			},
+		}
+
+		k8sClient := fake.NewClientBuilder().
+			WithScheme(scheme).
+			WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+			WithObjects(agent, boundPVC.DeepCopy(), statefulSet).
+			Build()
+
+		reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+		req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+		if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+			t.Fatalf("reconcile returned error: %v", err)
+		}
+
+		updatedAgent := &hermesv1alpha1.HermesAgent{}
+		if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+			t.Fatalf("get HermesAgent returned error: %v", err)
+		}
+		requireStatusCondition(t, updatedAgent.Status, conditionTypeWorkloadReady, metav1.ConditionFalse, reasonStatefulSetWaitingReady)
+		requireStatusCondition(t, updatedAgent.Status, conditionTypeReady, metav1.ConditionFalse, reasonStatefulSetWaitingReady)
+	})
 }
 
 func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {

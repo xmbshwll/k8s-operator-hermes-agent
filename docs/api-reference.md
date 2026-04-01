@@ -407,8 +407,12 @@ As with Service management, a same-name non-owned NetworkPolicy causes reconcili
 | --- | --- | --- |
 | `status.phase` | string | Coarse-grained phase summary |
 | `status.observedGeneration` | int64 | Last reconciled generation |
+| `status.image` | string | Effective Hermes runtime image reference |
+| `status.configHash` | string | Observed config revision hash for the current Hermes pod template |
 | `status.readyReplicas` | int32 | Ready Hermes pod count |
 | `status.persistenceBound` | bool | Whether the PVC is bound |
+| `status.persistentVolumeClaimName` | string | Managed PVC name when persistence is enabled |
+| `status.serviceName` | string | Managed Service name when service exposure is enabled |
 | `status.lastReconcileTime` | timestamp | Last status update time |
 | `status.conditions` | array | Condition set for config, persistence, workload, and overall readiness |
 
@@ -417,6 +421,11 @@ As with Service management, a same-name non-owned NetworkPolicy causes reconcili
 - `PersistenceReady`
 - `WorkloadReady`
 - `Ready`
+
+Common workload-progress reasons include:
+- `StatefulSetRolloutPending` when the StatefulSet controller has not yet observed the desired generation
+- `StatefulSetWaitingForReadyReplicas` when the rollout generation is current but the pod is not yet ready
+- `WaitingForPersistence` when workload progress is blocked on PVC creation or binding
 
 See `docs/troubleshooting.md` for common reasons and remediation steps.
 
