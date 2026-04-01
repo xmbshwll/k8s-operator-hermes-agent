@@ -767,10 +767,10 @@ func copyInt64Ptr(value *int64) *int64 {
 }
 
 func desiredReplicas(agent *hermesv1alpha1.HermesAgent) int32 {
-	if agent.Spec.Replicas > 0 {
-		return agent.Spec.Replicas
+	if agent.Spec.Replicas == 0 {
+		return 1
 	}
-	return 1
+	return agent.Spec.Replicas
 }
 
 func statefulSetUpdateStrategy(agent *hermesv1alpha1.HermesAgent) appsv1.StatefulSetUpdateStrategy {

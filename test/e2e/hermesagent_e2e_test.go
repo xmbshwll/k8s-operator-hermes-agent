@@ -1000,14 +1000,7 @@ func waitForServiceEndpointCount(serviceName string, count int) {
 			"-o", `jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[0]}{"\n"}{end}{end}`,
 		)
 		g.Expect(err).NotTo(HaveOccurred())
-		lines := []string{}
-		for _, line := range strings.Split(output, "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				lines = append(lines, line)
-			}
-		}
-		g.Expect(lines).To(HaveLen(count))
+		g.Expect(strings.Fields(output)).To(HaveLen(count))
 	}, 2*time.Minute, time.Second).Should(Succeed())
 }
 

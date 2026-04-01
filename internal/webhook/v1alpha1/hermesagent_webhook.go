@@ -401,22 +401,26 @@ func validateMode(path *field.Path, mode *int32) field.ErrorList {
 
 func validateReplicas(path *field.Path, spec hermesv1alpha1.HermesAgentSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
+	replicasPath := path.Child("replicas")
 	if spec.Replicas <= 0 {
-		allErrs = append(allErrs, field.Invalid(path.Child("replicas"), spec.Replicas, "replicas must be greater than zero"))
+		allErrs = append(allErrs, field.Invalid(replicasPath, spec.Replicas, "replicas must be greater than zero"))
 	}
 	persistenceEnabled := spec.Storage.Persistence.Enabled == nil || *spec.Storage.Persistence.Enabled
 	if spec.Replicas > 1 && persistenceEnabled {
-		allErrs = append(allErrs, field.Invalid(path.Child("replicas"), spec.Replicas, "replicas greater than 1 require spec.storage.persistence.enabled=false because the operator does not manage shared Hermes state"))
+		allErrs = append(allErrs, field.Invalid(replicasPath, spec.Replicas, "replicas greater than 1 require spec.storage.persistence.enabled=false because the operator does not manage shared Hermes state"))
 	}
 	return allErrs
 }
 
 func validateUpdateStrategy(path *field.Path, strategy hermesv1alpha1.HermesAgentUpdateStrategySpec) field.ErrorList {
 	allErrs := field.ErrorList{}
-	if strategy.Type == appsv1.OnDeleteStatefulSetStrategyType && strategy.RollingUpdate != nil {
+	if strategy.RollingUpdate == nil {
+		return allErrs
+	}
+	if strategy.Type == appsv1.OnDeleteStatefulSetStrategyType {
 		allErrs = append(allErrs, field.Invalid(path.Child("rollingUpdate"), strategy.RollingUpdate, "rollingUpdate is only valid when type is RollingUpdate"))
 	}
-	if strategy.RollingUpdate != nil && strategy.RollingUpdate.Partition != nil && *strategy.RollingUpdate.Partition < 0 {
+	if strategy.RollingUpdate.Partition != nil && *strategy.RollingUpdate.Partition < 0 {
 		allErrs = append(allErrs, field.Invalid(path.Child("rollingUpdate", "partition"), *strategy.RollingUpdate.Partition, "partition must be zero or greater"))
 	}
 	return allErrs
