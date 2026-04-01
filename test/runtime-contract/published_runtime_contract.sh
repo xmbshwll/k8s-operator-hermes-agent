@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-image="${HERMES_RUNTIME_IMAGE:-ghcr.io/xmbshwll/hermes-agent-docker:latest}"
+image="${HERMES_RUNTIME_IMAGE:-ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30}"
 runtime_uid="${HERMES_RUNTIME_UID:-10001}"
 workdir="$(mktemp -d)"
 container_id=""

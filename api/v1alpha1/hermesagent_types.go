@@ -24,11 +24,12 @@ import (
 // HermesAgentImageSpec defines the Hermes runtime image.
 type HermesAgentImageSpec struct {
 	// repository is the container image repository.
+	// +kubebuilder:default:="ghcr.io/xmbshwll/hermes-agent-docker"
 	// +kubebuilder:validation:MinLength=1
 	Repository string `json:"repository"`
 
 	// tag is the container image tag.
-	// +kubebuilder:default:="gateway-core"
+	// +kubebuilder:default:="v2026.3.30"
 	Tag string `json:"tag,omitempty"`
 
 	// pullPolicy is the image pull policy.

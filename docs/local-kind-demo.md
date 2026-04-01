@@ -16,7 +16,7 @@ This guide reflects the current project behavior:
 - cert-manager should be installed first because the default install path enables admission webhooks
 - local chart installs support an optional controller-manager `PodDisruptionBudget`, but it only renders for HA installs with `replicaCount > 1`
 - `HermesAgent` now supports richer `fileMounts` projections with selected keys and file modes
-- the general samples now use the published runtime image `ghcr.io/xmbshwll/hermes-agent-docker:latest`
+- the general samples now use the published runtime image `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`
 - HTTP UI and API-demo flows are out of scope here
 
 ---
@@ -94,7 +94,7 @@ kind load docker-image k8s-operator-hermes-agent:local --name hermes-local
 For the functional `HermesAgent` checks in this guide, use the published runtime image:
 
 ```text
-ghcr.io/xmbshwll/hermes-agent-docker:latest
+ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30
 ```
 
 That image is already used by the general samples such as:

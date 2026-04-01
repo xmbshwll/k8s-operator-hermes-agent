@@ -16,8 +16,8 @@ Scope: namespaced
 
 | Field | Type | Required | Default | Notes |
 | --- | --- | --- | --- | --- |
-| `spec.image.repository` | string | yes | none | Hermes runtime image repository |
-| `spec.image.tag` | string | no | `gateway-core` | Runtime image tag |
+| `spec.image.repository` | string | yes | `ghcr.io/xmbshwll/hermes-agent-docker` | Hermes runtime image repository |
+| `spec.image.tag` | string | no | `v2026.3.30` | Runtime image tag |
 | `spec.image.pullPolicy` | string | no | `IfNotPresent` | Standard Kubernetes image pull policy |
 | `spec.mode` | string | no | `gateway` | Only `gateway` is supported |
 | `spec.config` | object | no | none | Source for `config.yaml` |
@@ -45,7 +45,7 @@ Scope: namespaced
 spec:
   image:
     repository: ghcr.io/xmbshwll/hermes-agent-docker
-    tag: latest
+    tag: v2026.3.30
     pullPolicy: IfNotPresent
 ```
 

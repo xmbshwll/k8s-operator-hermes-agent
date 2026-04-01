@@ -172,7 +172,7 @@ The minimal sample already points at the published Hermes runtime image from [`x
 spec:
   image:
     repository: ghcr.io/xmbshwll/hermes-agent-docker
-    tag: latest
+    tag: v2026.3.30
 ```
 
 If you need a different Hermes build, replace that image reference before applying the sample.

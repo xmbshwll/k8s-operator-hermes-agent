@@ -687,7 +687,7 @@ func renderSampleManifest(relativePath string) (string, error) {
 
 	repository, tag := splitImageReference(hermesRuntimeImage)
 	rendered := strings.Replace(string(content), "repository: ghcr.io/xmbshwll/hermes-agent-docker", fmt.Sprintf("repository: %s", repository), 1)
-	rendered = strings.Replace(rendered, "tag: latest", fmt.Sprintf("tag: %s", tag), 1)
+	rendered = strings.Replace(rendered, "tag: v2026.3.30", fmt.Sprintf("tag: %s", tag), 1)
 	return renderManifest(rendered)
 }
 

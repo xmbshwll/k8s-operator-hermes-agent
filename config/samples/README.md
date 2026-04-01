@@ -6,7 +6,7 @@ Each sample is applied directly with `kubectl apply -f`, so remove it with the m
 These samples assume the operator is already installed.
 For operator-level install knobs such as secure metrics, cert-manager-backed webhooks, and Prometheus integration, see `docs/helm-values.md` and the manifests under `config/prometheus/`.
 
-Unless a sample says otherwise, the `spec.image` examples now use the published Hermes runtime image from [`ghcr.io/xmbshwll/hermes-agent-docker:latest`](https://github.com/xmbshwll/hermes-agent-docker).
+Unless a sample says otherwise, the `spec.image` examples now use the published Hermes runtime image from [`ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`](https://github.com/xmbshwll/hermes-agent-docker).
 
 ## Minimal gateway
 
@@ -48,7 +48,7 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
 
 Before applying it:
 - replace the placeholder secret values
-- keep `spec.image` as the published `ghcr.io/xmbshwll/hermes-agent-docker:latest` reference, or swap in your own Hermes runtime image
+- keep `spec.image` as the published `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30` reference, or swap in your own Hermes runtime image
 - keep `networkPolicy.enabled: true` unless you have a deliberate reason to widen egress manually
 
 Remove it with:
@@ -73,7 +73,7 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
 
 Before applying it:
 - replace the placeholder config values with your real Hermes settings
-- keep `spec.image` as the published `ghcr.io/xmbshwll/hermes-agent-docker:latest` reference, or swap in your own Hermes runtime image
+- keep `spec.image` as the published `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30` reference, or swap in your own Hermes runtime image
 - remember that the operator only mounts the Secret-backed files; the runtime image still defines Hermes behavior
 
 Remove it with:
@@ -101,7 +101,7 @@ Before applying it:
 - replace the placeholder SSH host, user, and model provider key
 - add your SSH private key and `known_hosts` content to the auth secret; the sample projects only those keys and sets a tighter mode on the private key file
 - set `config.raw.terminal.backend: ssh`; `spec.terminal.backend` is kept here only as an explicit fallback hint
-- the sample already uses `ghcr.io/xmbshwll/hermes-agent-docker:latest`; swap it only if you need a different Hermes runtime image
+- the sample already uses `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`; swap it only if you need a different Hermes runtime image
 - leave `networkPolicy.enabled: true` unless you are intentionally supplying your own policy
 
 Remove it with:
@@ -186,7 +186,7 @@ kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
 
 Before applying it:
 - replace the placeholder plugin file contents with your real plugin bundle
-- the sample already uses `ghcr.io/xmbshwll/hermes-agent-docker:latest`; swap it if your plugin workflow needs a different Hermes runtime image
+- the sample already uses `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`; swap it if your plugin workflow needs a different Hermes runtime image
 - do not assume stock Hermes loads arbitrary mounted plugin files automatically
 - keep plugin filenames stable if your runtime expects specific entrypoints
 

@@ -58,7 +58,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 				Namespace: namespace,
 			},
 			Spec: hermesv1alpha1.HermesAgentSpec{
-				Image: hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent"},
+				Image: hermesv1alpha1.HermesAgentImageSpec{},
 			},
 		}
 	}
@@ -69,7 +69,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
 			Expect(obj.Spec.Mode).To(Equal("gateway"))
-			Expect(obj.Spec.Image.Tag).To(Equal("gateway-core"))
+			Expect(obj.Spec.Image.Repository).To(Equal("ghcr.io/xmbshwll/hermes-agent-docker"))
+			Expect(obj.Spec.Image.Tag).To(Equal("v2026.3.30"))
 			Expect(obj.Spec.Image.PullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(obj.Spec.Terminal.Backend).To(BeEmpty())
 			Expect(obj.Spec.Storage.Persistence.Enabled).NotTo(BeNil())
@@ -98,7 +99,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 			stored := &hermesv1alpha1.HermesAgent{}
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
 			Expect(stored.Spec.Mode).To(Equal("gateway"))
-			Expect(stored.Spec.Image.Tag).To(Equal("gateway-core"))
+			Expect(stored.Spec.Image.Repository).To(Equal("ghcr.io/xmbshwll/hermes-agent-docker"))
+			Expect(stored.Spec.Image.Tag).To(Equal("v2026.3.30"))
 			Expect(stored.Spec.Image.PullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(stored.Spec.Terminal.Backend).To(BeEmpty())
 			Expect(stored.Spec.Service.Type).To(Equal(corev1.ServiceTypeClusterIP))

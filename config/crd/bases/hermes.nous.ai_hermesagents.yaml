@@ -1368,11 +1368,12 @@ spec:
                     description: pullPolicy is the image pull policy.
                     type: string
                   repository:
+                    default: ghcr.io/xmbshwll/hermes-agent-docker
                     description: repository is the container image repository.
                     minLength: 1
                     type: string
                   tag:
-                    default: gateway-core
+                    default: v2026.3.30
                     description: tag is the container image tag.
                     type: string
                 required:
