@@ -606,9 +606,8 @@ func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context
 	podDisruptionBudget := &policyv1.PodDisruptionBudget{}
 	podDisruptionBudget.Namespace = agent.Namespace
 	podDisruptionBudget.Name = agent.Name
-	podDisruptionBudgetKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
 	podDisruptionBudgetExists := true
-	if err := r.Get(ctx, podDisruptionBudgetKey, podDisruptionBudget); err != nil {
+	if err := r.Get(ctx, client.ObjectKeyFromObject(podDisruptionBudget), podDisruptionBudget); err != nil {
 		if !apierrors.IsNotFound(err) {
 			return err
 		}
@@ -623,7 +622,7 @@ func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context
 	}
 
 	if podDisruptionBudgetExists && !metav1.IsControlledBy(podDisruptionBudget, agent) {
-		return fmt.Errorf("PodDisruptionBudget %s already exists and is not owned by HermesAgent %s", agent.Name, agent.Name)
+		return fmt.Errorf("PodDisruptionBudget %s already exists and is not owned by HermesAgent %s", podDisruptionBudget.Name, agent.Name)
 	}
 
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, podDisruptionBudget, func() error {

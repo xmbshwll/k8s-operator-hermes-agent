@@ -778,15 +778,18 @@ func statefulSetUpdateStrategy(agent *hermesv1alpha1.HermesAgent) appsv1.Statefu
 	if strategyType == "" {
 		strategyType = appsv1.RollingUpdateStatefulSetStrategyType
 	}
-
-	strategy := appsv1.StatefulSetUpdateStrategy{Type: strategyType}
-	if strategyType == appsv1.RollingUpdateStatefulSetStrategyType {
-		strategy.RollingUpdate = &appsv1.RollingUpdateStatefulSetStrategy{}
-		if agent.Spec.UpdateStrategy.RollingUpdate != nil {
-			strategy.RollingUpdate.Partition = copyInt32Ptr(agent.Spec.UpdateStrategy.RollingUpdate.Partition)
-		}
+	if strategyType != appsv1.RollingUpdateStatefulSetStrategyType {
+		return appsv1.StatefulSetUpdateStrategy{Type: strategyType}
 	}
-	return strategy
+
+	rollingUpdate := &appsv1.RollingUpdateStatefulSetStrategy{}
+	if agent.Spec.UpdateStrategy.RollingUpdate != nil {
+		rollingUpdate.Partition = copyInt32Ptr(agent.Spec.UpdateStrategy.RollingUpdate.Partition)
+	}
+	return appsv1.StatefulSetUpdateStrategy{
+		Type:          strategyType,
+		RollingUpdate: rollingUpdate,
+	}
 }
 
 func podDisruptionBudgetEnabled(agent *hermesv1alpha1.HermesAgent) bool {
