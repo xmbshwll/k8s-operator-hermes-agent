@@ -421,6 +421,11 @@ func (in *HermesAgentSpec) DeepCopyInto(out *HermesAgentSpec) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
+	if in.TerminationGracePeriodSeconds != nil {
+		in, out := &in.TerminationGracePeriodSeconds, &out.TerminationGracePeriodSeconds
+		*out = new(int64)
+		**out = **in
+	}
 	in.Storage.DeepCopyInto(&out.Storage)
 	out.Terminal = in.Terminal
 	in.Resources.DeepCopyInto(&out.Resources)

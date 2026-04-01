@@ -509,14 +509,15 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 					Annotations: managedPodAnnotations(agent, inputs.Annotations),
 				},
 				Spec: corev1.PodSpec{
-					SecurityContext:              hermesPodSecurityContext(),
-					ImagePullSecrets:             append([]corev1.LocalObjectReference{}, agent.Spec.ImagePullSecrets...),
-					ServiceAccountName:           agent.Spec.ServiceAccountName,
-					AutomountServiceAccountToken: automountServiceAccountToken(agent),
-					NodeSelector:                 maps.Clone(agent.Spec.NodeSelector),
-					Tolerations:                  append([]corev1.Toleration{}, agent.Spec.Tolerations...),
-					Affinity:                     agent.Spec.Affinity.DeepCopy(),
-					TopologySpreadConstraints:    append([]corev1.TopologySpreadConstraint{}, agent.Spec.TopologySpreadConstraints...),
+					SecurityContext:               hermesPodSecurityContext(),
+					ImagePullSecrets:              append([]corev1.LocalObjectReference{}, agent.Spec.ImagePullSecrets...),
+					ServiceAccountName:            agent.Spec.ServiceAccountName,
+					AutomountServiceAccountToken:  automountServiceAccountToken(agent),
+					NodeSelector:                  maps.Clone(agent.Spec.NodeSelector),
+					Tolerations:                   append([]corev1.Toleration{}, agent.Spec.Tolerations...),
+					Affinity:                      agent.Spec.Affinity.DeepCopy(),
+					TopologySpreadConstraints:     append([]corev1.TopologySpreadConstraint{}, agent.Spec.TopologySpreadConstraints...),
+					TerminationGracePeriodSeconds: copyInt64Ptr(agent.Spec.TerminationGracePeriodSeconds),
 					Containers: []corev1.Container{{
 						Name:            hermesContainerName,
 						Image:           hermesImage(agent.Spec.Image),
@@ -723,6 +724,14 @@ func configMapFileValue(configMap *corev1.ConfigMap, key string) (string, bool) 
 }
 
 func copyBoolPtr(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
+func copyInt64Ptr(value *int64) *int64 {
 	if value == nil {
 		return nil
 	}

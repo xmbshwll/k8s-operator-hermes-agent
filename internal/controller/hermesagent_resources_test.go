@@ -1091,6 +1091,23 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	}
 }
 
+func TestBuildStatefulSetPreservesTerminationGracePeriodSeconds(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	terminationGracePeriodSeconds := int64(120)
+	agent.Spec.TerminationGracePeriodSeconds = &terminationGracePeriodSeconds
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	podSpec := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan)).Spec.Template.Spec
+	if podSpec.TerminationGracePeriodSeconds == nil || *podSpec.TerminationGracePeriodSeconds != terminationGracePeriodSeconds {
+		t.Fatalf("expected terminationGracePeriodSeconds %d, got %+v", terminationGracePeriodSeconds, podSpec.TerminationGracePeriodSeconds)
+	}
+}
+
 func TestBuildStatefulSetUsesServiceTargetPortForContainerPort(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
@@ -1163,6 +1180,9 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	}
 	if podSpec.ServiceAccountName != "hermes-runtime" {
 		t.Fatalf("expected serviceAccountName to be preserved, got %q", podSpec.ServiceAccountName)
+	}
+	if podSpec.TerminationGracePeriodSeconds != nil {
+		t.Fatalf("expected default terminationGracePeriodSeconds to be unset, got %+v", podSpec.TerminationGracePeriodSeconds)
 	}
 	if podSpec.AutomountServiceAccountToken == nil || !*podSpec.AutomountServiceAccountToken {
 		t.Fatalf("expected automountServiceAccountToken to be preserved, got %+v", podSpec.AutomountServiceAccountToken)

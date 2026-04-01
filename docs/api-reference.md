@@ -35,6 +35,7 @@ Scope: namespaced
 | `spec.tolerations` | array | no | empty | Tolerations for the Hermes workload pod |
 | `spec.affinity` | object | no | empty | Affinity and anti-affinity for the Hermes workload pod |
 | `spec.topologySpreadConstraints` | array | no | empty | Topology spread rules for the Hermes workload pod |
+| `spec.terminationGracePeriodSeconds` | int64 | no | Kubernetes default | Pod termination grace period for the Hermes workload pod |
 | `spec.storage` | object | no | persistence enabled | Hermes state storage settings |
 | `spec.terminal` | object | no | empty | Optional fallback terminal hint for operator wiring |
 | `spec.resources` | object | no | empty | Standard Kubernetes resource requests and limits |
@@ -276,6 +277,17 @@ spec:
 ```
 
 Standard Kubernetes topology spread constraints for the Hermes workload pod.
+
+### `spec.terminationGracePeriodSeconds`
+
+```yaml
+spec:
+  terminationGracePeriodSeconds: 120
+```
+
+Standard Kubernetes pod termination grace period for the managed Hermes workload.
+Use this when Hermes needs longer shutdown time to flush session state, emit final runtime files, or disconnect from external systems cleanly before Kubernetes sends `SIGKILL`.
+When omitted, the operator leaves the field unset and Kubernetes applies its normal default.
 
 ## Storage
 

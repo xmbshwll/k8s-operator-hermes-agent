@@ -312,6 +312,11 @@ type HermesAgentSpec struct {
 	// +optional
 	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
 
+	// terminationGracePeriodSeconds is the pod termination grace period for the managed Hermes workload.
+	// When omitted, Kubernetes uses the standard default.
+	// +optional
+	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
 	// storage defines Hermes state persistence.
 	// +optional
 	Storage HermesAgentStorageSpec `json:"storage,omitempty"`
