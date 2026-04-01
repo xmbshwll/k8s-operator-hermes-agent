@@ -603,6 +603,106 @@ spec:
 		waitForPodReady(podName)
 	})
 
+	It("preserves scheduling and auth pod-spec knobs on the managed workload", func() {
+		name := "hermesagent-pod-spec-controls"
+		serviceAccountName := "hermesagent-runtime"
+		pullSecretName := "hermesagent-regcred"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: %s
+  namespace: %s
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: %s
+  namespace: %s
+type: kubernetes.io/dockerconfigjson
+stringData:
+  .dockerconfigjson: '{"auths":{"example.com":{"username":"user","password":"pass","auth":"dXNlcjpwYXNz"}}}'
+---
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  image:
+%s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  serviceAccountName: %s
+  imagePullSecrets:
+    - name: %s
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: hermes
+      effect: NoSchedule
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values:
+                  - linux
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/instance: %s
+`, serviceAccountName, hermesAgentNamespace, pullSecretName, hermesAgentNamespace, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    "), serviceAccountName, pullSecretName, name))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+		waitForPodReady(statefulSetPodName(name))
+
+		By("verifying the managed StatefulSet template preserves the requested pod-spec controls")
+		Eventually(func(g Gomega) {
+			output, err := kubectl("get", "statefulset", name, "-n", hermesAgentNamespace, "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).To(ContainSubstring(fmt.Sprintf("serviceAccountName: %s", serviceAccountName)))
+			g.Expect(output).To(ContainSubstring(fmt.Sprintf("name: %s", pullSecretName)))
+			g.Expect(output).To(ContainSubstring("kubernetes.io/os: linux"))
+			g.Expect(output).To(ContainSubstring("key: dedicated"))
+			g.Expect(output).To(ContainSubstring("value: hermes"))
+			g.Expect(output).To(ContainSubstring("requiredDuringSchedulingIgnoredDuringExecution"))
+			g.Expect(output).To(ContainSubstring("operator: In"))
+			g.Expect(output).To(ContainSubstring("topologyKey: kubernetes.io/hostname"))
+			g.Expect(output).To(ContainSubstring("app.kubernetes.io/instance: hermesagent-pod-spec-controls"))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("verifying the created pod is running with the requested ServiceAccount")
+		Eventually(func(g Gomega) {
+			serviceAccount, err := kubectl("get", "pod", statefulSetPodName(name), "-n", hermesAgentNamespace, "-o", "jsonpath={.spec.serviceAccountName}")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(strings.TrimSpace(serviceAccount)).To(Equal(serviceAccountName))
+		}, 2*time.Minute, time.Second).Should(Succeed())
+	})
+
 	It("creates and removes optional Service and NetworkPolicy resources", func() {
 		name := "hermesagent-optional-resources"
 		manifest, err := renderManifest(fmt.Sprintf(`
