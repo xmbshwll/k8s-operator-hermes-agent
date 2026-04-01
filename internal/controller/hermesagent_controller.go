@@ -607,6 +607,7 @@ func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *her
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, service, func() error {
 		existingPorts := append([]corev1.ServicePort{}, service.Spec.Ports...)
 		service.Labels = mergeStringMaps(service.Labels, desired.Labels)
+		service.Annotations = mergeStringMaps(nil, desired.Annotations)
 		service.Spec.Type = desired.Spec.Type
 		service.Spec.Selector = desired.Spec.Selector
 		service.Spec.Ports = desired.Spec.Ports

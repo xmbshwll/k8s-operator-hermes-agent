@@ -27,6 +27,8 @@ Scope: namespaced
 | `spec.secretRefs` | array | no | empty | Mount named secrets under `/var/run/hermes/secrets/<name>` |
 | `spec.fileMounts` | array | no | empty | Mount projected ConfigMaps or Secrets as files at explicit paths |
 | `spec.imagePullSecrets` | array | no | empty | Image pull secrets for the Hermes workload pod |
+| `spec.podLabels` | object | no | empty | Additional labels for the Hermes pod template |
+| `spec.podAnnotations` | object | no | empty | Additional annotations for the Hermes pod template |
 | `spec.serviceAccountName` | string | no | empty | ServiceAccount for the Hermes workload pod |
 | `spec.automountServiceAccountToken` | bool | no | `false` | Controls automatic ServiceAccount token mounting for the Hermes workload pod |
 | `spec.nodeSelector` | object | no | empty | Node selector for the Hermes workload pod |
@@ -162,7 +164,7 @@ Changes trigger a rollout.
 ## Workload pod placement and registry auth
 
 These fields apply to the managed Hermes pod, not to the operator deployment itself.
-Use them when the runtime image lives in a private registry, the Hermes workload must run on specific nodes, or Hermes itself needs a dedicated Kubernetes identity.
+Use them when the runtime image lives in a private registry, the Hermes workload must run on specific nodes, Hermes itself needs a dedicated Kubernetes identity, or the pod must integrate with tools that depend on labels or annotations such as Prometheus, service meshes, or policy engines.
 
 ### `spec.imagePullSecrets`
 
@@ -174,6 +176,29 @@ spec:
 
 Standard Kubernetes `imagePullSecrets` for the Hermes workload pod.
 Each entry must set `name`.
+
+### `spec.podLabels`
+
+```yaml
+spec:
+  podLabels:
+    sidecar.istio.io/inject: "false"
+```
+
+Additional labels applied to the managed Hermes pod template.
+The operator's own identity labels still win on conflicts so selectors and ownership wiring stay stable.
+Use this for integrations such as service-mesh policy, cost allocation, or workload classification.
+
+### `spec.podAnnotations`
+
+```yaml
+spec:
+  podAnnotations:
+    prometheus.io/scrape: "true"
+```
+
+Additional annotations applied to the managed Hermes pod template.
+Use this for integrations such as Prometheus scraping hints, sidecar settings, or admission-controller metadata.
 
 ### `spec.serviceAccountName`
 
@@ -339,11 +364,14 @@ spec:
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `enabled` | bool | `false` | Whether the operator creates a Service |
+| `annotations` | object | empty | Additional annotations applied to the managed Service |
 | `type` | string | `ClusterIP` | Standard Kubernetes Service type |
 | `port` | int | `8080` | Must be greater than zero when enabled |
 
 The operator manages a Service with the same name as the `HermesAgent`.
 If another same-name Service already exists and is not owned by the `HermesAgent`, reconciliation fails.
+
+Use `service.annotations` for integrations such as Prometheus scraping metadata, cloud load-balancer controller hints, or cluster policy annotations.
 
 This is the supported Kubernetes exposure path for HTTP-oriented deployment stories such as a custom API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen service port and implement the HTTP contract you expect. A stock Hermes image should not be assumed to expose that interface by default.
 

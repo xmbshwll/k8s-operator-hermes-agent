@@ -179,6 +179,10 @@ type HermesAgentServiceSpec struct {
 	// +kubebuilder:default:=false
 	Enabled bool `json:"enabled,omitempty"`
 
+	// annotations are additional annotations applied to the managed Service.
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+
 	// type is the Kubernetes Service type.
 	// +kubebuilder:default:="ClusterIP"
 	Type corev1.ServiceType `json:"type,omitempty"`
@@ -267,6 +271,15 @@ type HermesAgentSpec struct {
 	// imagePullSecrets are image pull secrets for the managed Hermes pod.
 	// +optional
 	ImagePullSecrets []corev1.LocalObjectReference `json:"imagePullSecrets,omitempty"`
+
+	// podLabels are additional labels applied to the managed Hermes pod template.
+	// Operator-owned identity labels still win on conflicts.
+	// +optional
+	PodLabels map[string]string `json:"podLabels,omitempty"`
+
+	// podAnnotations are additional annotations applied to the managed Hermes pod template.
+	// +optional
+	PodAnnotations map[string]string `json:"podAnnotations,omitempty"`
 
 	// serviceAccountName is the ServiceAccount used by the managed Hermes pod.
 	// +optional

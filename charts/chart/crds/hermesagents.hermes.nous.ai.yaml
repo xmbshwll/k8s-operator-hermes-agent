@@ -1565,6 +1565,19 @@ spec:
                 description: nodeSelector constrains the Hermes pod to nodes with
                   matching labels.
                 type: object
+              podAnnotations:
+                additionalProperties:
+                  type: string
+                description: podAnnotations are additional annotations applied to
+                  the managed Hermes pod template.
+                type: object
+              podLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  podLabels are additional labels applied to the managed Hermes pod template.
+                  Operator-owned identity labels still win on conflicts.
+                type: object
               probes:
                 description: probes defines startup, readiness, and liveness behavior.
                 properties:
@@ -1725,6 +1738,12 @@ spec:
               service:
                 description: service defines an optional Service.
                 properties:
+                  annotations:
+                    additionalProperties:
+                      type: string
+                    description: annotations are additional annotations applied to
+                      the managed Service.
+                    type: object
                   enabled:
                     default: false
                     description: enabled controls whether a Service is created.

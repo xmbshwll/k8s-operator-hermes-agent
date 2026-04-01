@@ -641,6 +641,10 @@ spec:
       {
         "platforms": {}
       }
+  podLabels:
+    sidecar.istio.io/inject: "false"
+  podAnnotations:
+    prometheus.io/scrape: "true"
   serviceAccountName: %s
   imagePullSecrets:
     - name: %s
@@ -686,6 +690,8 @@ spec:
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(output).To(ContainSubstring(fmt.Sprintf("serviceAccountName: %s", serviceAccountName)))
 			g.Expect(output).To(ContainSubstring(fmt.Sprintf("name: %s", pullSecretName)))
+			g.Expect(output).To(ContainSubstring("sidecar.istio.io/inject: \"false\""))
+			g.Expect(output).To(ContainSubstring("prometheus.io/scrape: \"true\""))
 			g.Expect(output).To(ContainSubstring("kubernetes.io/os: linux"))
 			g.Expect(output).To(ContainSubstring("key: dedicated"))
 			g.Expect(output).To(ContainSubstring("value: hermes"))
@@ -726,6 +732,8 @@ spec:
       }
   service:
     enabled: true
+    annotations:
+      prometheus.io/scrape: "true"
     port: 8080
   networkPolicy:
     enabled: true
@@ -750,6 +758,13 @@ spec:
 			g.Expect(err).NotTo(HaveOccurred())
 			_, err = kubectl("get", "networkpolicy", name, "-n", hermesAgentNamespace)
 			g.Expect(err).NotTo(HaveOccurred())
+		}, 2*time.Minute, time.Second).Should(Succeed())
+
+		By("verifying the generated Service includes requested annotations")
+		Eventually(func(g Gomega) {
+			output, err := kubectl("get", "service", name, "-n", hermesAgentNamespace, "-o", "yaml")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(output).To(ContainSubstring("prometheus.io/scrape: \"true\""))
 		}, 2*time.Minute, time.Second).Should(Succeed())
 
 		By("verifying the generated NetworkPolicy includes additional configured ports")

@@ -861,9 +861,10 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 			},
 			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
 			Service: hermesv1alpha1.HermesAgentServiceSpec{
-				Enabled: true,
-				Type:    corev1.ServiceTypeClusterIP,
-				Port:    8080,
+				Enabled:     true,
+				Annotations: map[string]string{"prometheus.io/scrape": "true"},
+				Type:        corev1.ServiceTypeClusterIP,
+				Port:        8080,
 			},
 		},
 	}
@@ -895,6 +896,9 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 	}
 	if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != 8080 {
 		t.Fatalf("expected Service port 8080, got %+v", service.Spec.Ports)
+	}
+	if service.Annotations["prometheus.io/scrape"] != "true" {
+		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)
 	}
 
 	updatedAgent := &hermesv1alpha1.HermesAgent{}

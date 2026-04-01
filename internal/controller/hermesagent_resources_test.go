@@ -667,6 +667,7 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	agent.Namespace = testNamespace
 	agent.Spec.Service.Type = corev1.ServiceTypeNodePort
 	agent.Spec.Service.Port = 9443
+	agent.Spec.Service.Annotations = map[string]string{"prometheus.io/scrape": "true"}
 
 	service := buildService(agent)
 	if service.Spec.Type != corev1.ServiceTypeNodePort {
@@ -677,6 +678,9 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	}
 	if service.Spec.Ports[0].TargetPort.IntVal != 9443 {
 		t.Fatalf("expected Service targetPort 9443, got %+v", service.Spec.Ports[0].TargetPort)
+	}
+	if service.Annotations["prometheus.io/scrape"] != "true" {
+		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)
 	}
 }
 
@@ -1087,6 +1091,8 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	testAgent := &hermesv1alpha1.HermesAgent{}
 	testAgent.Name = testAgentName
 	testAgent.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-auth"}}
+	testAgent.Spec.PodLabels = map[string]string{"sidecar.istio.io/inject": "false", "app.kubernetes.io/name": "should-not-override"}
+	testAgent.Spec.PodAnnotations = map[string]string{"prometheus.io/scrape": "true"}
 	testAgent.Spec.ServiceAccountName = "hermes-runtime"
 	automountServiceAccountToken := true
 	testAgent.Spec.AutomountServiceAccountToken = &automountServiceAccountToken
@@ -1113,7 +1119,20 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 		t.Fatalf("buildConfigPlan returned error: %v", err)
 	}
 
-	podSpec := buildStatefulSet(testAgent, buildPodTemplateInputs(testAgent, plan)).Spec.Template.Spec
+	statefulSet := buildStatefulSet(testAgent, buildPodTemplateInputs(testAgent, plan))
+	podSpec := statefulSet.Spec.Template.Spec
+	if statefulSet.Spec.Template.Labels["sidecar.istio.io/inject"] != "false" {
+		t.Fatalf("expected pod label sidecar.istio.io/inject=false, got %+v", statefulSet.Spec.Template.Labels)
+	}
+	if _, ok := statefulSet.Spec.Selector.MatchLabels["sidecar.istio.io/inject"]; ok {
+		t.Fatalf("expected pod-only labels not to change the StatefulSet selector, got %+v", statefulSet.Spec.Selector.MatchLabels)
+	}
+	if statefulSet.Spec.Template.Labels["app.kubernetes.io/name"] != "k8s-operator-hermes-agent" {
+		t.Fatalf("expected operator identity label to win, got %+v", statefulSet.Spec.Template.Labels)
+	}
+	if statefulSet.Spec.Template.Annotations["prometheus.io/scrape"] != "true" {
+		t.Fatalf("expected pod annotation prometheus.io/scrape=true, got %+v", statefulSet.Spec.Template.Annotations)
+	}
 	if len(podSpec.ImagePullSecrets) != 1 || podSpec.ImagePullSecrets[0].Name != "registry-auth" {
 		t.Fatalf("expected image pull secrets to be preserved, got %+v", podSpec.ImagePullSecrets)
 	}

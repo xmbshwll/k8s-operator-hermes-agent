@@ -36,7 +36,7 @@ A `HermesAgent` resource lets you declare:
 - the Hermes runtime image to run
 - Hermes `config.yaml` and `gateway.json`
 - environment variables and file/secret references
-- workload-level image pull secrets, ServiceAccount identity, and pod placement controls
+- workload-level image pull secrets, pod labels/annotations, ServiceAccount identity, and pod placement controls
 - persistent storage settings
 - resource requests and limits
 - startup, readiness, and liveness probes

@@ -408,9 +408,10 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      agent.Name,
-			Namespace: agent.Namespace,
-			Labels:    labels,
+			Name:        agent.Name,
+			Namespace:   agent.Namespace,
+			Labels:      labels,
+			Annotations: maps.Clone(agent.Spec.Service.Annotations),
 		},
 		Spec: corev1.ServiceSpec{
 			Type:     serviceType(agent),
@@ -464,7 +465,8 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend strin
 
 func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
 	replicas := int32(1)
-	labels := resourceLabels(agent)
+	selectorLabels := resourceLabels(agent)
+	podLabels := managedPodLabels(agent)
 	volumes := append([]corev1.Volume{}, inputs.Volumes...)
 	volumeMounts := append([]corev1.VolumeMount{}, inputs.VolumeMounts...)
 
@@ -484,18 +486,18 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agent.Name,
 			Namespace: agent.Namespace,
-			Labels:    labels,
+			Labels:    selectorLabels,
 		},
 		Spec: appsv1.StatefulSetSpec{
 			Replicas:    &replicas,
 			ServiceName: agent.Name,
 			Selector: &metav1.LabelSelector{
-				MatchLabels: labels,
+				MatchLabels: selectorLabels,
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels:      labels,
-					Annotations: mergeStringMaps(nil, inputs.Annotations),
+					Labels:      podLabels,
+					Annotations: managedPodAnnotations(agent, inputs.Annotations),
 				},
 				Spec: corev1.PodSpec{
 					SecurityContext:              hermesPodSecurityContext(),
@@ -772,6 +774,14 @@ func resourceLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {
 		"app.kubernetes.io/managed-by": "kustomize",
 		"app.kubernetes.io/instance":   agent.Name,
 	}
+}
+
+func managedPodLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {
+	return mergeStringMaps(agent.Spec.PodLabels, resourceLabels(agent))
+}
+
+func managedPodAnnotations(agent *hermesv1alpha1.HermesAgent, inputs map[string]string) map[string]string {
+	return mergeStringMaps(agent.Spec.PodAnnotations, inputs)
 }
 
 func mergeStringMaps(base, extra map[string]string) map[string]string {
