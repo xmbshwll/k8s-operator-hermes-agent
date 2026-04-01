@@ -80,6 +80,7 @@ The operator keeps configuration intentionally simple.
 Each config file can come from exactly one source:
 - `raw` inline content
 - `configMapRef` reference to an existing `ConfigMap` key
+- `secretRef` reference to an existing `Secret` key
 
 If inline content is used, the controller generates a dedicated `ConfigMap` and mounts it into the pod.
 If a reference is used, the controller mounts the referenced key directly.
@@ -134,6 +135,8 @@ Service creation is disabled by default.
 
 That is intentional. Hermes gateway deployments are primarily egress-first, and many deployments do not need an inbound Kubernetes `Service` at all.
 When users do need a service, they can opt in through `spec.service`.
+
+That `Service` support is intentionally narrow in v1. It is meant to expose the managed Hermes pod when the runtime image already serves the interface you need. It is **not** a first-class ingress or API product layer, and the operator does not add an ingress, proxy, sidecar, or HTTP compatibility shim on top.
 
 ## Optional network policy
 
@@ -228,6 +231,21 @@ The chart intentionally exposes install-time controls for operator concerns only
 The Hermes runtime image is not configured through the chart because it belongs to each `HermesAgent`, not to the operator installation.
 
 For concrete install commands, supported values, and upgrade notes, see `README.md`, `docs/helm-values.md`, and `docs/release.md`.
+
+## Supported scope vs example-only paths
+
+The supported v1 product scope is:
+- one Hermes pod per `HermesAgent`
+- persistent-state gateway management
+- operator-managed config, storage, probes, optional `Service`, and optional egress `NetworkPolicy`
+- webhook-validated and defaulted CR instances
+
+The following user-facing paths exist only as examples today, not as first-class supported product features:
+- custom runtime images that happen to serve an HTTP API through the optional `Service`
+- custom runtime images used behind Open WebUI
+- plugin-delivery examples where the runtime image is responsible for plugin discovery and execution
+
+Those examples are still useful, but they should be read as "the operator can deliver this workload shape" rather than "the operator guarantees this end-to-end product behavior."
 
 ## Main design decisions
 

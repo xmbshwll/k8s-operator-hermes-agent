@@ -8,6 +8,13 @@ For operator-level install knobs such as secure metrics, cert-manager-backed web
 
 Unless a sample says otherwise, the `spec.image` examples now use the published Hermes runtime image from [`ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`](https://github.com/xmbshwll/hermes-agent-docker).
 
+Product scope note:
+- the minimal, telegram, secret-config, and ssh samples are within the supported v1 operator scope
+- the API server and Open WebUI samples are **example-only** because they depend on a custom Hermes runtime image that serves an HTTP interface the operator does not provide
+- the plugin sample is supported for file delivery only; plugin discovery and execution remain runtime-image behavior
+
+See `docs/supported-features.md` for the canonical support matrix.
+
 ## Minimal gateway
 
 File: `hermes_v1alpha1_hermesagent.yaml`
@@ -110,7 +117,7 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 ```
 
-## API server exposure with a custom runtime image
+## API server exposure with a custom runtime image (example-only)
 
 File: `hermes_v1alpha1_hermesagent_api_server.yaml`
 
@@ -139,7 +146,7 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
 ```
 
-## Open WebUI backend with a custom runtime image
+## Open WebUI backend with a custom runtime image (example-only)
 
 File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
 
@@ -173,6 +180,7 @@ kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
 File: `hermes_v1alpha1_hermesagent_plugins.yaml`
 
 - Uses `spec.fileMounts` as the preferred file-delivery mechanism, including explicit key selection
+- This sample is supported for operator-side file delivery only; it is not a promise that the runtime image will auto-load or execute the mounted plugin bundle
 - Mounts a projected plugin bundle at `/var/run/hermes/plugins`
 - Secret updates trigger a reconcile and pod rollout
 - Only handles file delivery; it does not make Hermes discover or load plugins by itself
