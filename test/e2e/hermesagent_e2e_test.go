@@ -203,7 +203,7 @@ spec:
 		waitForAgentPhase(name, "Ready")
 	})
 
-	It("serves runtime state through the optional Service when HTTP is enabled", func() {
+	It("supports the Service-based HTTP exposure path for custom runtimes", func() {
 		name := "hermesagent-http-service"
 		manifest, err := renderManifest(fmt.Sprintf(`
 apiVersion: hermes.nous.ai/v1alpha1

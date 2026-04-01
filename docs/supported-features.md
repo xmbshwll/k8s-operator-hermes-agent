@@ -13,7 +13,7 @@ It is the canonical answer to "is this supported?"
 | Inline or referenced config files | Supported | `spec.config` and `spec.gatewayConfig` support `raw`, `configMapRef`, and `secretRef`. |
 | Env and mounted secret/config inputs | Supported | `env`, `envFrom`, `secretRefs`, and `fileMounts` are part of the supported API. File delivery is supported; what the runtime image does with those files is runtime-specific. |
 | Probe management | Supported | Startup, readiness, and liveness probes are managed by the operator. |
-| Optional `Service` | Supported | Intended for exposing the single managed Hermes pod when the runtime image already serves the required interface. |
+| Optional `Service` | Supported | This is the supported HTTP exposure path for a single Hermes pod when the runtime image already serves the required interface. |
 | Optional egress `NetworkPolicy` | Supported | The generated policy is intentionally simple and egress-focused. |
 | Admission defaulting and validation | Supported | Invalid specs should be rejected before reconcile. |
 | Helm chart and generated install bundle | Supported | These are the supported operator install paths. |
@@ -24,10 +24,9 @@ These flows are present in docs or samples, but they are not first-class product
 
 | Area | Status | Why |
 | --- | --- | --- |
-| API server sample | Example-only | Requires a custom Hermes runtime image that already serves the expected HTTP API under `hermes gateway`. |
-| Open WebUI backend sample | Example-only | Requires a custom runtime image and external Open WebUI deployment. The operator does not provide a built-in Open WebUI integration layer. |
+| API server sample | Supported | Demonstrates the supported Service-based HTTP exposure path for a custom Hermes runtime image that serves HTTP under `hermes gateway`. |
+| Open WebUI backend sample | Example-only | Uses the supported Service-based backend exposure path, but the external Open WebUI integration remains outside the operator scope. |
 | Plugin execution or auto-discovery from mounted plugin bundles | Example-only | The operator can deliver files, but plugin discovery and execution remain runtime-image behavior. |
-| Custom HTTP-serving runtimes behind the optional `Service` | Example-only | The operator can expose the pod, but it does not guarantee the runtime's HTTP contract. |
 
 ## Explicitly out of scope for v1
 
@@ -35,7 +34,7 @@ These flows are present in docs or samples, but they are not first-class product
 | --- | --- | --- |
 | Multi-replica Hermes workloads | Out of scope | The operator manages a singleton `StatefulSet` today. |
 | Autoscaling | Out of scope | No HPA or operator-driven scaling model is provided. |
-| Default ingress resources | Out of scope | The operator does not generate ingress resources by default. |
+| Default ingress resources | Out of scope | The supported HTTP path is Service-based; ingress remains user-managed. |
 | Browser sidecars | Out of scope | Not part of the current product shape. |
 | Docker-in-Docker terminal backends | Out of scope | Not supported by the operator. |
 | Generic multi-tenant platform abstractions | Out of scope | The operator focuses on one Hermes workload per CR. |
@@ -45,6 +44,8 @@ These flows are present in docs or samples, but they are not first-class product
 
 - Samples under `config/samples/` show how to shape a `HermesAgent` resource.
 - A sample is **supported** only when it stays inside the v1 product boundary above.
-- A sample is **example-only** when it depends on behavior supplied by a custom Hermes runtime image or external systems that the operator does not manage.
+- A sample is **example-only** when it depends on external systems or runtime-specific behavior that the operator does not manage as part of the supported path.
+
+For the supported HTTP-serving model, see `docs/http-exposure.md`.
 
 If a future release expands scope, update this file first and then align the README, architecture doc, samples, and tests.

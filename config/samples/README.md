@@ -9,9 +9,9 @@ For operator-level install knobs such as secure metrics, cert-manager-backed web
 Unless a sample says otherwise, the `spec.image` examples now use the published Hermes runtime image from [`ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`](https://github.com/xmbshwll/hermes-agent-docker).
 
 Product scope note:
-- the minimal, telegram, secret-config, and ssh samples are within the supported v1 operator scope
+- the minimal, telegram, secret-config, ssh, and API server samples are within the supported v1 operator scope
 - those supported samples now show the recommended hardened baseline with `automountServiceAccountToken: false`
-- the API server and Open WebUI samples are **example-only** because they depend on a custom Hermes runtime image that serves an HTTP interface the operator does not provide
+- the Open WebUI sample is still **example-only** because the external Open WebUI integration is outside the operator scope even though the backend Service exposure path is supported
 - the plugin sample is supported for file delivery only; plugin discovery and execution remain runtime-image behavior
 
 See `docs/supported-features.md` for the canonical support matrix.
@@ -120,15 +120,15 @@ Remove it with:
 kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
 ```
 
-## API server exposure with a custom runtime image (example-only)
+## API server exposure with a custom runtime image (supported HTTP path)
 
 File: `hermes_v1alpha1_hermesagent_api_server.yaml`
 
-- Exposes the Hermes pod through the built-in optional `Service`
+- Exposes the Hermes pod through the supported operator-managed `Service`
 - Demonstrates a distinct `Service` port (`80`) and runtime `targetPort` (`8080`)
 - Only works when you provide a custom Hermes runtime image that already serves the HTTP API you want while still running under `hermes gateway`
 - Does not imply that a stock Hermes image exposes an operator-ready HTTP API on `:8080`
-- Keeps the operator focused on the Hermes workload only; it does not add an ingress, proxy, sidecar, or API shim
+- Keeps the operator focused on the Hermes workload plus Service only; it does not add an ingress, proxy, sidecar, or API shim
 
 Apply it with:
 
@@ -143,6 +143,7 @@ Before applying it:
 - adjust `service.port` and `service.targetPort` together if you want a different in-cluster port mapping
 - do not assume a stock Hermes image provides this path by default
 - remember that the operator still starts `hermes gateway`; if your runtime needs a different entrypoint or port, adjust the image rather than the CR
+- if you need ingress or edge routing, put that on top of the Service instead of expecting the operator to generate ingress resources
 
 Remove it with:
 
@@ -154,7 +155,7 @@ kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
 
 File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
 
-- Exposes Hermes through a `ClusterIP` `Service` intended to be consumed by a separate Open WebUI deployment
+- Exposes Hermes through the supported `ClusterIP` `Service` path intended to be consumed by a separate Open WebUI deployment
 - Demonstrates a distinct `Service` port (`80`) and runtime `targetPort` (`8080`)
 - Only works when you provide a custom Hermes runtime image that already serves the OpenAI-compatible or Open WebUI-compatible HTTP interface you expect
 - Does not imply that a stock Hermes image is a drop-in Open WebUI backend

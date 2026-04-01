@@ -243,14 +243,14 @@ The supported v1 product scope is:
 - one Hermes pod per `HermesAgent`
 - persistent-state gateway management
 - operator-managed config, storage, probes, optional `Service`, and optional egress `NetworkPolicy`
+- Service-based HTTP exposure for custom Hermes runtime images that serve HTTP under `hermes gateway`
 - webhook-validated and defaulted CR instances
 
-The following user-facing paths exist only as examples today, not as first-class supported product features:
-- custom runtime images that happen to serve an HTTP API through the optional `Service`
+The following user-facing paths still exist only as examples, not as first-class supported product features:
 - custom runtime images used behind Open WebUI
 - plugin-delivery examples where the runtime image is responsible for plugin discovery and execution
 
-Those examples are still useful, but they should be read as "the operator can deliver this workload shape" rather than "the operator guarantees this end-to-end product behavior."
+Those examples are still useful, but they should be read as "the operator can deliver this workload shape" rather than "the operator guarantees this full end-to-end product behavior."
 
 ## Main design decisions
 
@@ -289,6 +289,8 @@ The following are explicitly out of scope for v1:
 - preserving compatibility with older deployment models
 
 These are intentionally excluded so the first release stays focused on one clean path: install the operator, create one `HermesAgent`, and run Hermes reliably with persistent state.
+
+For HTTP-serving workloads, the clean supported boundary is now: the operator manages the Hermes pod plus its Service, while ingress and higher-level HTTP platform concerns stay outside the operator.
 
 ## Relationship between operator and Hermes runtime
 

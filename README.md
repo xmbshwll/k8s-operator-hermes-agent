@@ -24,9 +24,9 @@ The operator does **not** currently claim first-class support for:
 - multi-replica Hermes workloads
 - autoscaling
 - default ingress generation
-- a built-in HTTP API / Open WebUI product path
+- a built-in Open WebUI integration path
 
-Those HTTP-facing examples remain custom-runtime examples, not supported product features of the operator itself.
+The supported HTTP-serving path is a custom Hermes runtime image behind the operator-managed `Service`. Ingress remains user-managed.
 
 See [`docs/supported-features.md`](docs/supported-features.md) for the support matrix and [`docs/architecture.md`](docs/architecture.md) for the design rationale and explicit v1 non-goals.
 
@@ -152,9 +152,9 @@ For other real deployment paths, see:
 - [`config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml`](config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml)
 - [`config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`](config/samples/hermes_v1alpha1_hermesagent_plugins.yaml)
 
-The API server and Open WebUI samples rely on the existing optional `Service`, but they are only valid when you provide a custom Hermes runtime image that already serves the expected HTTP interface on port `8080` while running under `hermes gateway`.
+The API server and Open WebUI samples rely on the existing optional `Service`, and they only make sense when you provide a custom Hermes runtime image that already serves the expected HTTP interface on port `8080` while running under `hermes gateway`.
 
-Those two samples are **example-only** today. They demonstrate how to point the operator at a custom HTTP-serving runtime image, but they are not a claim that the operator provides a supported built-in API-serving or Open WebUI integration path.
+The Service-based HTTP exposure model is now a supported operator path for custom Hermes runtimes. The Open WebUI sample is still example-only because the operator does not deploy or manage Open WebUI itself.
 
 The minimal sample already points at the published Hermes runtime image from [`xmbshwll/hermes-agent-docker`](https://github.com/xmbshwll/hermes-agent-docker):
 
@@ -196,6 +196,8 @@ kubectl describe hermesagent <name>
 ```
 
 The operator emits focused events for invalid config, missing refs, PVC state changes, rollout progress, readiness, and same-name Service or NetworkPolicy conflicts.
+
+For the supported HTTP-serving model and runtime assumptions, see [docs/http-exposure.md](docs/http-exposure.md).
 
 ## Configuration model
 
