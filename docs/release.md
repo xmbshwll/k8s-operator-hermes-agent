@@ -25,6 +25,8 @@ The release workflow maps the tag to published artifacts like this:
 - release bundle: `install.yaml` attached to the `v<version>` GitHub release
 - CRD upgrade bundle: `hermesagents.hermes.nous.ai-crd.yaml` attached to the `v<version>` GitHub release
 
+For end-user install and upgrade commands, start with [docs/install-and-upgrade.md](install-and-upgrade.md).
+
 ## Published install paths
 
 ### Helm chart from GHCR

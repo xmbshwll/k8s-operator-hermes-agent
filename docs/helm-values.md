@@ -2,44 +2,23 @@
 
 The operator chart lives in `charts/chart/` and is the recommended installation path for published releases.
 
+For the full install and upgrade flow, including the quick evaluation bundle path and the exact CRD-first Helm sequence, start with [docs/install-and-upgrade.md](install-and-upgrade.md).
+
 ## Prerequisites
 
 - Helm 4
 - cert-manager installed in the target cluster for the default webhook-enabled install path
 
-## Install
+## Install and upgrade summary
 
-```sh
-helm install k8s-operator-hermes-agent \
-  oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
-  --version <version> \
-  --namespace k8s-operator-hermes-agent-system \
-  --create-namespace
-```
+The supported production path is a webhook-enabled Helm install with cert-manager already present in the cluster.
 
-## Upgrade
+The supported Helm upgrade order is always:
 
-Helm installs the chart CRD on first install from `crds/`, but Helm does not perform normal CRD upgrades from that directory on later `helm upgrade` runs.
-The supported upgrade path is therefore explicit and two-step:
-
-1. apply the matching release CRD bundle
+1. apply the matching CRD bundle
 2. run `helm upgrade`
 
-```sh
-kubectl apply -f \
-  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v<version>/hermesagents.hermes.nous.ai-crd.yaml
-
-helm upgrade k8s-operator-hermes-agent \
-  oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
-  --version <version> \
-  --namespace k8s-operator-hermes-agent-system
-```
-
-Before upgrading:
-- check the release notes
-- confirm cert-manager is healthy if webhooks are enabled
-- verify existing `HermesAgent` resources are healthy before changing the operator
-- always apply the CRD bundle first, even when the schema change seems minor
+If you want the exact copy-paste commands, use [docs/install-and-upgrade.md](install-and-upgrade.md).
 
 Do not rely on plain `helm upgrade` by itself for CRD changes, or you can end up with a new controller running against an old CRD schema.
 

@@ -279,6 +279,8 @@ HELM_RELEASE ?= k8s-operator-hermes-agent
 HELM_CHART_DIR ?= charts/chart
 ## Additional arguments to pass to helm commands
 HELM_EXTRA_ARGS ?=
+## CRD bundle to apply before CRD-first Helm upgrades
+CRD_BUNDLE ?= dist/hermesagents.hermes.nous.ai-crd.yaml
 ## Version to use when packaging the Helm chart
 CHART_VERSION ?= 0.1.0
 ## App version to use when packaging the Helm chart
@@ -315,6 +317,16 @@ helm-deploy: install-helm ## Deploy manager to the K8s cluster via Helm. Specify
 		--create-namespace \
 		--set image.repository=$${IMG%:*} \
 		--set image.tag=$${IMG##*:} \
+		--wait \
+		--timeout 5m \
+		$(HELM_EXTRA_ARGS)
+
+.PHONY: helm-upgrade-crd-first
+helm-upgrade-crd-first: install-helm build-crd-bundle ## Apply the CRD bundle first, then run helm upgrade --install. Override CRD_BUNDLE for published release assets.
+	$(KUBECTL) apply -f $(CRD_BUNDLE)
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART_DIR) \
+		--namespace $(HELM_NAMESPACE) \
+		--create-namespace \
 		--wait \
 		--timeout 5m \
 		$(HELM_EXTRA_ARGS)

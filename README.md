@@ -103,46 +103,25 @@ The controller mounts:
 
 ## Install the operator
 
-### 1. Install a published release with Helm
+Use [docs/install-and-upgrade.md](docs/install-and-upgrade.md) for the copy-pasteable install and upgrade paths.
+That guide splits the supported flows into:
+- quick evaluation install with the published `install.yaml` bundle
+- production install with the published Helm chart
+- explicit CRD-first Helm upgrades
 
-```sh
-helm install k8s-operator-hermes-agent \
-  oci://ghcr.io/xmbshwll/charts/k8s-operator-hermes-agent \
-  --version <version> \
-  --namespace k8s-operator-hermes-agent-system \
-  --create-namespace
-```
+The short version is:
+- both supported install paths enable admission webhooks by default
+- cert-manager must already be installed before install or upgrade
+- Helm upgrades must apply the matching CRD bundle before `helm upgrade`
 
-The published chart already points at the matching released controller image.
-You do not need to build the operator image locally for a normal install.
-
-Published installs enable admission webhooks and require cert-manager to already be installed in the cluster so webhook certificates can be issued and injected.
-
-### 2. Install a published release with the YAML bundle
-
-```sh
-kubectl apply -f \
-  https://github.com/xmbshwll/k8s-operator-hermes-agent/releases/download/v<version>/install.yaml
-```
-
-This installs:
-- the `HermesAgent` CRD
-- the operator deployment
-- admission webhook configuration
-- RBAC for the controller
-- the metrics service
-
-For chart configuration, install notes, and upgrade guidance, see [docs/helm-values.md](docs/helm-values.md).
-For Helm upgrades, apply the release CRD bundle first and then run `helm upgrade`; the chart CRD in `crds/` is install-time only.
-
-### 3. Verify the operator
+### 1. Verify the operator
 
 ```sh
 kubectl get pods -n k8s-operator-hermes-agent-system
 kubectl get crd hermesagents.hermes.nous.ai
 ```
 
-### 4. Build and install manually during development
+### 2. Build and install manually during development
 
 ```sh
 make docker-build docker-push IMG=<registry>/k8s-operator-hermes-agent:<tag>
