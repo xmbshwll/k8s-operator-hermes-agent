@@ -2124,9 +2124,20 @@ spec:
                 description: persistenceBound indicates whether the Hermes PVC is
                   bound.
                 type: boolean
+              persistentVolumeClaimDriftedFields:
+                description: persistentVolumeClaimDriftedFields lists immutable PVC
+                  settings that no longer match the requested spec.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
               persistentVolumeClaimName:
                 description: persistentVolumeClaimName is the name of the managed
                   Hermes PVC when persistence is enabled.
+                type: string
+              persistentVolumeClaimRemediation:
+                description: persistentVolumeClaimRemediation describes the supported
+                  next step when immutable PVC settings drift.
                 type: string
               phase:
                 description: phase is a coarse-grained summary of HermesAgent state.

@@ -21,7 +21,7 @@ Use those events together with the status conditions to narrow the issue quickly
 | `ConfigMapReconcileFailed` | The operator could not create or update an inline generated ConfigMap | Check operator logs and look for API permission or conflict errors |
 | `PersistentVolumeClaimMissing` | The Hermes PVC has not been created yet | Look for earlier reconcile failures or invalid storage configuration |
 | `PersistentVolumeClaimPending` | The PVC exists but has not bound to storage yet | Check storage class, capacity, access modes, and cluster storage health |
-| `PersistentVolumeClaimSpecDrift` | The requested PVC spec changed in a way Kubernetes cannot apply in place | Recreate the claim if you need new `accessModes` or `storageClassName`; size changes still reconcile normally |
+| `PersistentVolumeClaimSpecDrift` | The requested PVC spec changed in a way Kubernetes cannot apply in place | Check `status.persistentVolumeClaimDriftedFields` and follow `status.persistentVolumeClaimRemediation`; size changes still reconcile normally |
 | `PersistentVolumeClaimLost` | The PVC was lost after creation | Inspect the storage backend and recover or recreate the claim |
 | `StatefulSetMissing` | The Hermes StatefulSet has not been created yet | Look for earlier reconcile failures on config, PVC, Service, or NetworkPolicy |
 | `StatefulSetProgressing` | The StatefulSet rollout is still in progress | Inspect pod scheduling, image pulls, startup/readiness/liveness probes, and container logs |
@@ -80,14 +80,16 @@ Symptoms:
 Check:
 
 ```sh
-kubectl describe hermesagent <name> -n <namespace>
+kubectl get hermesagent <name> -n <namespace> -o jsonpath='{.status.persistentVolumeClaimDriftedFields}{"\n"}{.status.persistentVolumeClaimRemediation}{"\n"}'
 kubectl get pvc <name>-data -n <namespace> -o yaml
 ```
 
 Fix:
 - `spec.storage.persistence.size` can be increased in place when the storage class supports expansion
-- changes to `spec.storage.persistence.accessModes` or `storageClassName` require recreating the claim
-- back up any needed Hermes state, delete the workload/PVC deliberately, and then re-apply the `HermesAgent`
+- changes to `spec.storage.persistence.accessModes` or `storageClassName` require claim replacement
+- supported migration path 1: create a new `HermesAgent` with a different name, wait for the new PVC to bind, migrate Hermes state if needed, then cut traffic over
+- supported migration path 2: for in-place replacement, back up any needed Hermes state, delete the existing workload/PVC deliberately, and then re-apply the same `HermesAgent` so the operator recreates the claim with the new immutable settings
+- the operator intentionally does not delete or mutate the existing PVC automatically because that would be destructive
 
 ### Pods fail probes or never become ready
 

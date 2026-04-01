@@ -1500,7 +1500,7 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 		t.Fatal("expected reconcile to fail when immutable PVC fields drift")
 	}
 
-	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "PersistentVolumeClaimSpecDrift", "must be recreated", "spec.storage.persistence.accessModes", "spec.storage.persistence.storageClassName")
+	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "PersistentVolumeClaimSpecDrift", "must be recreated", "spec.storage.persistence.accessModes", "spec.storage.persistence.storageClassName", "different name", pvc.Name)
 
 	updatedAgent := &hermesv1alpha1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
@@ -1508,6 +1508,15 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 	}
 	requireStatusCondition(t, updatedAgent.Status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
 	requireStatusCondition(t, updatedAgent.Status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift")
+	if len(updatedAgent.Status.PersistentVolumeClaimDriftedFields) != 2 {
+		t.Fatalf("expected 2 drifted PVC fields, got %+v", updatedAgent.Status.PersistentVolumeClaimDriftedFields)
+	}
+	if updatedAgent.Status.PersistentVolumeClaimDriftedFields[0] != "spec.storage.persistence.accessModes" || updatedAgent.Status.PersistentVolumeClaimDriftedFields[1] != "spec.storage.persistence.storageClassName" {
+		t.Fatalf("unexpected drifted PVC fields: %+v", updatedAgent.Status.PersistentVolumeClaimDriftedFields)
+	}
+	if !strings.Contains(updatedAgent.Status.PersistentVolumeClaimRemediation, "different name") || !strings.Contains(updatedAgent.Status.PersistentVolumeClaimRemediation, pvc.Name) {
+		t.Fatalf("expected remediation guidance to mention creating a new HermesAgent name and PVC %q, got %q", pvc.Name, updatedAgent.Status.PersistentVolumeClaimRemediation)
+	}
 }
 
 func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t *testing.T) {
@@ -1576,6 +1585,12 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
 	requireStatusCondition(t, updatedAgent.Status, conditionTypePersistenceReady, metav1.ConditionTrue, "PersistentVolumeClaimBound")
+	if len(updatedAgent.Status.PersistentVolumeClaimDriftedFields) != 0 {
+		t.Fatalf("expected no drifted PVC fields on successful reconcile, got %+v", updatedAgent.Status.PersistentVolumeClaimDriftedFields)
+	}
+	if updatedAgent.Status.PersistentVolumeClaimRemediation != "" {
+		t.Fatalf("expected no PVC remediation message on successful reconcile, got %q", updatedAgent.Status.PersistentVolumeClaimRemediation)
+	}
 }
 
 func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {

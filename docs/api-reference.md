@@ -456,6 +456,8 @@ As with Service management, a same-name non-owned NetworkPolicy causes reconcili
 | `status.readyReplicas` | int32 | Ready Hermes pod count |
 | `status.persistenceBound` | bool | Whether the PVC is bound |
 | `status.persistentVolumeClaimName` | string | Managed PVC name when persistence is enabled |
+| `status.persistentVolumeClaimDriftedFields` | array | Immutable PVC fields that no longer match the requested spec |
+| `status.persistentVolumeClaimRemediation` | string | Guided next step when immutable PVC drift blocks reconciliation |
 | `status.serviceName` | string | Managed Service name when service exposure is enabled |
 | `status.lastReconcileTime` | timestamp | Last status update time |
 | `status.conditions` | array | Condition set for config, persistence, workload, and overall readiness |
@@ -470,6 +472,8 @@ Common workload-progress reasons include:
 - `StatefulSetRolloutPending` when the StatefulSet controller has not yet observed the desired generation
 - `StatefulSetWaitingForReadyReplicas` when the rollout generation is current but the pod is not yet ready
 - `WaitingForPersistence` when workload progress is blocked on PVC creation or binding
+
+When immutable PVC drift is detected, the operator also fills `status.persistentVolumeClaimDriftedFields` with the exact blocked fields and `status.persistentVolumeClaimRemediation` with the supported recovery path.
 
 See `docs/troubleshooting.md` for common reasons and remediation steps.
 

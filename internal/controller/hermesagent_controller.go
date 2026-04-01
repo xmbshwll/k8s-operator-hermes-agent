@@ -517,7 +517,7 @@ func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Conte
 			persistentVolumeClaim.Spec = desired.Spec
 		} else {
 			if drift := persistentVolumeClaimImmutableFieldDrift(agent, persistentVolumeClaim.Spec, desired.Spec); len(drift) > 0 {
-				return &persistentVolumeClaimSpecDriftError{name: persistentVolumeClaim.Name, fields: drift}
+				return newPersistentVolumeClaimSpecDriftError(agent, persistentVolumeClaim.Name, drift)
 			}
 			persistentVolumeClaim.Spec.Resources.Requests = desired.Spec.Resources.Requests
 		}
@@ -527,12 +527,26 @@ func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Conte
 }
 
 type persistentVolumeClaimSpecDriftError struct {
-	name   string
-	fields []string
+	name        string
+	fields      []string
+	remediation string
+}
+
+func newPersistentVolumeClaimSpecDriftError(agent *hermesv1alpha1.HermesAgent, pvcName string, fields []string) *persistentVolumeClaimSpecDriftError {
+	copiedFields := append([]string{}, fields...)
+	return &persistentVolumeClaimSpecDriftError{
+		name:        pvcName,
+		fields:      copiedFields,
+		remediation: persistentVolumeClaimDriftRemediation(agent, pvcName),
+	}
 }
 
 func (e *persistentVolumeClaimSpecDriftError) Error() string {
-	return fmt.Sprintf("PersistentVolumeClaim %s must be recreated to apply immutable storage changes: %s", e.name, strings.Join(e.fields, ", "))
+	return fmt.Sprintf("PersistentVolumeClaim %s must be recreated to apply immutable storage changes: %s. %s", e.name, strings.Join(e.fields, ", "), e.remediation)
+}
+
+func persistentVolumeClaimDriftRemediation(agent *hermesv1alpha1.HermesAgent, pvcName string) string {
+	return fmt.Sprintf("Supported remediation: create a new HermesAgent with a different name for a fresh PVC, or back up Hermes state, delete PersistentVolumeClaim %s, and re-apply HermesAgent %s", pvcName, agent.Name)
 }
 
 func persistentVolumeClaimImmutableFieldDrift(agent *hermesv1alpha1.HermesAgent, existing, desired corev1.PersistentVolumeClaimSpec) []string {
@@ -948,6 +962,8 @@ func populateStatusMetadata(status *hermesv1alpha1.HermesAgentStatus, agent *her
 	} else {
 		status.PersistentVolumeClaimName = ""
 	}
+	status.PersistentVolumeClaimDriftedFields = nil
+	status.PersistentVolumeClaimRemediation = ""
 	if serviceEnabled(agent) {
 		status.ServiceName = agent.Name
 	} else {
@@ -983,6 +999,8 @@ func markPersistenceFailure(status *hermesv1alpha1.HermesAgentStatus, err error)
 
 	var driftErr *persistentVolumeClaimSpecDriftError
 	if errors.As(err, &driftErr) {
+		status.PersistentVolumeClaimDriftedFields = append([]string{}, driftErr.fields...)
+		status.PersistentVolumeClaimRemediation = driftErr.remediation
 		setCondition(status, conditionTypePersistenceReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift", driftErr.Error())
 		setCondition(status, conditionTypeWorkloadReady, metav1.ConditionUnknown, "PersistentVolumeClaimSpecDrift", "Workload state is unchanged, but the requested PVC spec cannot be applied in place")
 		setCondition(status, conditionTypeReady, metav1.ConditionFalse, "PersistentVolumeClaimSpecDrift", "Hermes persistence does not match the requested immutable PVC settings")

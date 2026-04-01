@@ -373,6 +373,15 @@ type HermesAgentStatus struct {
 	// +optional
 	PersistentVolumeClaimName string `json:"persistentVolumeClaimName,omitempty"`
 
+	// persistentVolumeClaimDriftedFields lists immutable PVC settings that no longer match the requested spec.
+	// +listType=set
+	// +optional
+	PersistentVolumeClaimDriftedFields []string `json:"persistentVolumeClaimDriftedFields,omitempty"`
+
+	// persistentVolumeClaimRemediation describes the supported next step when immutable PVC settings drift.
+	// +optional
+	PersistentVolumeClaimRemediation string `json:"persistentVolumeClaimRemediation,omitempty"`
+
 	// serviceName is the name of the managed Service when service exposure is enabled.
 	// +optional
 	ServiceName string `json:"serviceName,omitempty"`
