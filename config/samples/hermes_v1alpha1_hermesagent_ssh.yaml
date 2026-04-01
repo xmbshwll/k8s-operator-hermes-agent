@@ -72,6 +72,7 @@ spec:
         - ReadWriteOnce
   terminal:
     backend: ssh
+  automountServiceAccountToken: false
   resources:
     requests:
       cpu: 500m

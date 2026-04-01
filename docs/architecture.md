@@ -159,7 +159,10 @@ The managed Hermes pod is hardened with restricted-style defaults:
 - `seccompProfile: RuntimeDefault`
 - dropped Linux capabilities
 - `allowPrivilegeEscalation: false`
+- `readOnlyRootFilesystem: true`
+- `automountServiceAccountToken: false` by default
 - separate writable `/tmp`
+- a dedicated writable Hermes state volume at `/data/hermes`
 
 The operator image itself also follows a locked-down container model.
 

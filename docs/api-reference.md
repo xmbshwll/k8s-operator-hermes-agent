@@ -28,6 +28,7 @@ Scope: namespaced
 | `spec.fileMounts` | array | no | empty | Mount projected ConfigMaps or Secrets as files at explicit paths |
 | `spec.imagePullSecrets` | array | no | empty | Image pull secrets for the Hermes workload pod |
 | `spec.serviceAccountName` | string | no | empty | ServiceAccount for the Hermes workload pod |
+| `spec.automountServiceAccountToken` | bool | no | `false` | Controls automatic ServiceAccount token mounting for the Hermes workload pod |
 | `spec.nodeSelector` | object | no | empty | Node selector for the Hermes workload pod |
 | `spec.tolerations` | array | no | empty | Tolerations for the Hermes workload pod |
 | `spec.affinity` | object | no | empty | Affinity and anti-affinity for the Hermes workload pod |
@@ -184,6 +185,17 @@ spec:
 Standard Kubernetes `serviceAccountName` for the Hermes workload pod.
 Use this when Hermes itself needs Kubernetes API access with its own identity.
 This does not change the operator controller's ServiceAccount or RBAC.
+
+### `spec.automountServiceAccountToken`
+
+```yaml
+spec:
+  automountServiceAccountToken: false
+```
+
+Controls whether Kubernetes automatically mounts the ServiceAccount token into the managed Hermes pod.
+The operator defaults this to `false` so Hermes does not receive cluster credentials unless you opt in deliberately.
+If your Hermes runtime actually needs Kubernetes API access, set both `serviceAccountName` and `automountServiceAccountToken: true` explicitly.
 
 ### `spec.nodeSelector`
 

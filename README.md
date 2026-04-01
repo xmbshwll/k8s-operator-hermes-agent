@@ -245,6 +245,7 @@ Environment and mounted files are handled separately:
 Workload placement, registry auth, and workload identity are also configured per `HermesAgent`:
 - `spec.imagePullSecrets` applies to the managed Hermes pod when the runtime image lives in a private registry
 - `spec.serviceAccountName` lets the managed Hermes pod use its own Kubernetes identity without changing the operator controller's ServiceAccount
+- `spec.automountServiceAccountToken` controls whether that workload identity token is mounted automatically; the operator defaults it to `false`
 - `spec.nodeSelector`, `spec.tolerations`, `spec.affinity`, and `spec.topologySpreadConstraints` steer the managed Hermes pod onto the right nodes without affecting the operator deployment
 
 `config.yaml` is the source of truth for the effective terminal backend whenever it declares `terminal.backend`. The controller derives operator-side wiring such as generated SSH egress rules from the resolved config content and only falls back to `spec.terminal.backend` when the config omits a backend. The operator only has SSH-specific behavior today; all other backend values are treated generically.

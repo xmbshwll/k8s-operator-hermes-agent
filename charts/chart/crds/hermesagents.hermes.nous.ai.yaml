@@ -967,6 +967,12 @@ spec:
                         x-kubernetes-list-type: atomic
                     type: object
                 type: object
+              automountServiceAccountToken:
+                default: false
+                description: |-
+                  automountServiceAccountToken controls whether the managed Hermes pod receives
+                  the ServiceAccount token volume automatically.
+                type: boolean
               config:
                 description: config provides the main Hermes config.yaml content.
                 properties:

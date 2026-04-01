@@ -50,6 +50,7 @@ const (
 var defaultPersistenceEnabled = true
 var defaultNetworkPolicyEnabled = false
 var defaultProbeEnabled = true
+var defaultAutomountServiceAccountToken = false
 
 // nolint:unused
 // log is for logging in this package.
@@ -86,6 +87,9 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 
 	if obj.Spec.Storage.Persistence.Enabled == nil {
 		obj.Spec.Storage.Persistence.Enabled = &defaultPersistenceEnabled
+	}
+	if obj.Spec.AutomountServiceAccountToken == nil {
+		obj.Spec.AutomountServiceAccountToken = &defaultAutomountServiceAccountToken
 	}
 	if obj.Spec.Storage.Persistence.Size == "" {
 		obj.Spec.Storage.Persistence.Size = defaultPersistenceSize

@@ -248,6 +248,12 @@ type HermesAgentSpec struct {
 	// +optional
 	ServiceAccountName string `json:"serviceAccountName,omitempty"`
 
+	// automountServiceAccountToken controls whether the managed Hermes pod receives
+	// the ServiceAccount token volume automatically.
+	// +kubebuilder:default:=false
+	// +optional
+	AutomountServiceAccountToken *bool `json:"automountServiceAccountToken,omitempty"`
+
 	// nodeSelector constrains the Hermes pod to nodes with matching labels.
 	// +optional
 	NodeSelector map[string]string `json:"nodeSelector,omitempty"`

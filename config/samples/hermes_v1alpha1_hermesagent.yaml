@@ -29,6 +29,7 @@ spec:
         - ReadWriteOnce
   terminal:
     backend: local
+  automountServiceAccountToken: false
   resources:
     requests:
       cpu: 500m

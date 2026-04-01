@@ -10,6 +10,7 @@ Unless a sample says otherwise, the `spec.image` examples now use the published 
 
 Product scope note:
 - the minimal, telegram, secret-config, and ssh samples are within the supported v1 operator scope
+- those supported samples now show the recommended hardened baseline with `automountServiceAccountToken: false`
 - the API server and Open WebUI samples are **example-only** because they depend on a custom Hermes runtime image that serves an HTTP interface the operator does not provide
 - the plugin sample is supported for file delivery only; plugin discovery and execution remain runtime-image behavior
 

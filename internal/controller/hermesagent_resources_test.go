@@ -59,6 +59,9 @@ func requireHermesContainerSecurityContext(t *testing.T, container corev1.Contai
 	if container.SecurityContext.AllowPrivilegeEscalation == nil || *container.SecurityContext.AllowPrivilegeEscalation {
 		t.Fatal("expected allowPrivilegeEscalation to be false")
 	}
+	if container.SecurityContext.ReadOnlyRootFilesystem == nil || !*container.SecurityContext.ReadOnlyRootFilesystem {
+		t.Fatal("expected readOnlyRootFilesystem to be true")
+	}
 	if container.SecurityContext.Capabilities == nil {
 		t.Fatal("expected container capabilities to be configured")
 	}
@@ -1017,6 +1020,9 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	if statefulSet.Spec.Template.Spec.ServiceAccountName != "" {
 		t.Fatalf("expected default serviceAccountName to be empty, got %q", statefulSet.Spec.Template.Spec.ServiceAccountName)
 	}
+	if statefulSet.Spec.Template.Spec.AutomountServiceAccountToken == nil || *statefulSet.Spec.Template.Spec.AutomountServiceAccountToken {
+		t.Fatalf("expected automountServiceAccountToken to default to false, got %+v", statefulSet.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
 }
 
 func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.T) {
@@ -1024,6 +1030,8 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	testAgent.Name = testAgentName
 	testAgent.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-auth"}}
 	testAgent.Spec.ServiceAccountName = "hermes-runtime"
+	automountServiceAccountToken := true
+	testAgent.Spec.AutomountServiceAccountToken = &automountServiceAccountToken
 	testAgent.Spec.NodeSelector = map[string]string{"kubernetes.io/os": "linux"}
 	testAgent.Spec.Tolerations = []corev1.Toleration{{Key: "dedicated", Operator: corev1.TolerationOpEqual, Value: "hermes", Effect: corev1.TaintEffectNoSchedule}}
 	testAgent.Spec.Affinity = &corev1.Affinity{
@@ -1053,6 +1061,9 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	}
 	if podSpec.ServiceAccountName != "hermes-runtime" {
 		t.Fatalf("expected serviceAccountName to be preserved, got %q", podSpec.ServiceAccountName)
+	}
+	if podSpec.AutomountServiceAccountToken == nil || !*podSpec.AutomountServiceAccountToken {
+		t.Fatalf("expected automountServiceAccountToken to be preserved, got %+v", podSpec.AutomountServiceAccountToken)
 	}
 	if podSpec.NodeSelector["kubernetes.io/os"] != "linux" {
 		t.Fatalf("expected nodeSelector to be preserved, got %+v", podSpec.NodeSelector)
