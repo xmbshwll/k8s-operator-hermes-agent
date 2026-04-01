@@ -21,6 +21,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	DefaultHermesAgentImageRepository = "ghcr.io/xmbshwll/hermes-agent-docker"
+	DefaultHermesAgentImageTag        = "v2026.3.30"
+)
+
 // HermesAgentImageSpec defines the Hermes runtime image.
 type HermesAgentImageSpec struct {
 	// repository is the container image repository.

@@ -36,8 +36,6 @@ import (
 
 const (
 	defaultMode                  = "gateway"
-	defaultImageRepository       = "ghcr.io/xmbshwll/hermes-agent-docker"
-	defaultImageTag              = "v2026.3.30"
 	defaultPersistenceSize       = "10Gi"
 	defaultServicePort     int32 = 8080
 	defaultProbePeriod     int32 = 10
@@ -77,10 +75,10 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 		obj.Spec.Mode = defaultMode
 	}
 	if obj.Spec.Image.Repository == "" {
-		obj.Spec.Image.Repository = defaultImageRepository
+		obj.Spec.Image.Repository = hermesv1alpha1.DefaultHermesAgentImageRepository
 	}
 	if obj.Spec.Image.Tag == "" {
-		obj.Spec.Image.Tag = defaultImageTag
+		obj.Spec.Image.Tag = hermesv1alpha1.DefaultHermesAgentImageTag
 	}
 	if obj.Spec.Image.PullPolicy == "" {
 		obj.Spec.Image.PullPolicy = corev1.PullIfNotPresent
