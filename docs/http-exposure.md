@@ -24,14 +24,16 @@ spec:
 ```
 
 That is the supported Kubernetes exposure path for HTTP-serving Hermes runtimes.
+When `spec.replicas` is greater than `1`, the Service load-balances across the ready Hermes pods.
 
 ## What the operator guarantees
 
 When you use the supported HTTP path, the operator guarantees:
-- the managed `Service` targets the Hermes pod
+- the managed `Service` targets the Hermes pods
 - the Service port and target port are reconciled from the CRD
 - the managed pod declares the matching container port when service exposure is enabled
 - the normal Hermes config, storage, probe, and rollout behavior still applies
+- multi-replica HTTP workloads get an operator-managed `PodDisruptionBudget` with `maxUnavailable: 1`
 - the HTTP path is covered by end-to-end test coverage in this repository
 
 ## What your runtime image must provide
@@ -64,6 +66,7 @@ If you need ingress, point your own ingress controller or gateway at the operato
 
 For in-cluster clients, use the managed `ClusterIP` Service directly.
 That is the simplest supported path.
+For stateless HTTP-serving runtimes, you can also combine that with `spec.replicas > 1` and `spec.storage.persistence.enabled=false`.
 
 ### External or routed consumers
 

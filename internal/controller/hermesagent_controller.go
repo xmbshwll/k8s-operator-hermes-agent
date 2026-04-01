@@ -26,6 +26,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	api "k8s.io/apimachinery/pkg/api/meta"
@@ -75,6 +76,7 @@ type HermesAgentReconciler struct {
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile moves the current HermesAgent config state toward the desired state.
@@ -153,6 +155,13 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		})
 	}
 
+	if err := r.reconcilePodDisruptionBudget(ctx, agent); err != nil {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile poddisruptionbudget", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+			populateStatusMetadata(status, agent, plan.Hash)
+			markWorkloadFailure(status, "PodDisruptionBudgetReconcileFailed", err.Error(), "Hermes PodDisruptionBudget could not be reconciled")
+		})
+	}
+
 	log.Info("Reconciled HermesAgent config",
 		"name", agent.Name,
 		"generatedConfigMaps", countGeneratedFiles(plan.Files),
@@ -176,6 +185,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Service{}).
 		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&policyv1.PodDisruptionBudget{}).
 		Owns(&appsv1.StatefulSet{}).
 		Watches(&corev1.ConfigMap{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForConfigMap)).
 		Watches(&corev1.Secret{}, handler.EnqueueRequestsFromMapFunc(r.findAgentsForSecret)).
@@ -592,6 +602,39 @@ func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent 
 	return err
 }
 
+func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+	podDisruptionBudget := &policyv1.PodDisruptionBudget{}
+	podDisruptionBudget.Namespace = agent.Namespace
+	podDisruptionBudget.Name = agent.Name
+	podDisruptionBudgetKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
+	podDisruptionBudgetExists := true
+	if err := r.Get(ctx, podDisruptionBudgetKey, podDisruptionBudget); err != nil {
+		if !apierrors.IsNotFound(err) {
+			return err
+		}
+		podDisruptionBudgetExists = false
+	}
+
+	if !podDisruptionBudgetEnabled(agent) {
+		if !podDisruptionBudgetExists || !metav1.IsControlledBy(podDisruptionBudget, agent) {
+			return nil
+		}
+		return r.Delete(ctx, podDisruptionBudget)
+	}
+
+	if podDisruptionBudgetExists && !metav1.IsControlledBy(podDisruptionBudget, agent) {
+		return fmt.Errorf("PodDisruptionBudget %s already exists and is not owned by HermesAgent %s", agent.Name, agent.Name)
+	}
+
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, podDisruptionBudget, func() error {
+		desired := buildPodDisruptionBudget(agent)
+		podDisruptionBudget.Labels = mergeStringMaps(podDisruptionBudget.Labels, desired.Labels)
+		podDisruptionBudget.Spec = desired.Spec
+		return controllerutil.SetControllerReference(agent, podDisruptionBudget, r.Scheme)
+	})
+	return err
+}
+
 func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
 	service := &corev1.Service{}
 	serviceKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
@@ -770,7 +813,7 @@ func eventForConditionTransition(before, after *hermesv1alpha1.HermesAgentStatus
 
 func eventTypeForCondition(condition *metav1.Condition) string {
 	switch condition.Reason {
-	case "InvalidConfig", "MissingReferencedInput", "ReferencedInputsReadFailed", "ConfigMapReconcileFailed", "PersistentVolumeClaimReconcileFailed", "PersistentVolumeClaimSpecDrift", "PersistentVolumeClaimLost", "StatefulSetReconcileFailed", "ServiceReconcileFailed", "NetworkPolicyReconcileFailed":
+	case "InvalidConfig", "MissingReferencedInput", "ReferencedInputsReadFailed", "ConfigMapReconcileFailed", "PersistentVolumeClaimReconcileFailed", "PersistentVolumeClaimSpecDrift", "PersistentVolumeClaimLost", "StatefulSetReconcileFailed", "ServiceReconcileFailed", "NetworkPolicyReconcileFailed", "PodDisruptionBudgetReconcileFailed":
 		return corev1.EventTypeWarning
 	default:
 		return corev1.EventTypeNormal

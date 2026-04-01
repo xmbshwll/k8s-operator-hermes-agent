@@ -1655,6 +1655,13 @@ spec:
                         type: integer
                     type: object
                 type: object
+              replicas:
+                default: 1
+                description: |-
+                  replicas is the number of Hermes pods to run.
+                  Multi-replica HermesAgent workloads require persistence to be disabled.
+                format: int32
+                type: integer
               resources:
                 description: resources defines container resource requests and limits.
                 properties:
@@ -2030,6 +2037,27 @@ spec:
                   - whenUnsatisfiable
                   type: object
                 type: array
+              updateStrategy:
+                description: updateStrategy configures rollout behavior for the managed
+                  StatefulSet.
+                properties:
+                  rollingUpdate:
+                    description: rollingUpdate configures the RollingUpdate strategy.
+                    properties:
+                      partition:
+                        description: partition is the ordinal at which the StatefulSet
+                          controller starts applying RollingUpdate changes.
+                        format: int32
+                        type: integer
+                    type: object
+                  type:
+                    default: RollingUpdate
+                    description: type is the StatefulSet update strategy.
+                    enum:
+                    - RollingUpdate
+                    - OnDelete
+                    type: string
+                type: object
             required:
             - image
             type: object

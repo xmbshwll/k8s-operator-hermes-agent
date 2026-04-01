@@ -249,6 +249,73 @@ spec:
 		Expect(report).To(ContainSubstring("path=/data/hermes/gateway_state.json"))
 	})
 
+	It("supports multi-replica stateless rollouts with a PodDisruptionBudget", func() {
+		name := "hermesagent-ha-service"
+		manifest, err := renderManifest(fmt.Sprintf(`
+apiVersion: hermes.nous.ai/v1alpha1
+kind: HermesAgent
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  replicas: 2
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 1
+  image:
+%s
+  config:
+    raw: |
+      model: anthropic/claude-opus-4.1
+      terminal:
+        backend: local
+  gatewayConfig:
+    raw: |
+      {
+        "platforms": {}
+      }
+  env:
+    - name: HERMES_E2E_HTTP_PORT
+      value: "8080"
+  storage:
+    persistence:
+      enabled: false
+  service:
+    enabled: true
+    port: 80
+    targetPort: 8080
+`, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
+		Expect(err).NotTo(HaveOccurred())
+		defer os.Remove(manifest)
+		defer kubectl("delete", "-f", manifest, "--ignore-not-found=true")
+
+		_, err = kubectl("apply", "-f", manifest)
+		Expect(err).NotTo(HaveOccurred())
+		_, err = kubectl("rollout", "status", fmt.Sprintf("statefulset/%s", name), "-n", hermesAgentNamespace, "--timeout=5m")
+		Expect(err).NotTo(HaveOccurred())
+		waitForAgentPhase(name, "Ready")
+		waitForPodReady(statefulSetPodNameAt(name, 0))
+		waitForPodReady(statefulSetPodNameAt(name, 1))
+
+		By("verifying the StatefulSet rollout controls and PDB")
+		replicas, err := kubectl("get", "statefulset", name, "-n", hermesAgentNamespace, "-o", "jsonpath={.spec.replicas}")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(replicas)).To(Equal("2"))
+		partition, err := kubectl("get", "statefulset", name, "-n", hermesAgentNamespace, "-o", "jsonpath={.spec.updateStrategy.rollingUpdate.partition}")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(partition)).To(Equal("1"))
+		maxUnavailable, err := kubectl("get", "poddisruptionbudget", name, "-n", hermesAgentNamespace, "-o", "jsonpath={.spec.maxUnavailable}")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(strings.TrimSpace(maxUnavailable)).To(Equal("1"))
+
+		By("verifying the Service publishes both ready replicas")
+		waitForServiceEndpointCount(name, 2)
+		report, err := readServiceReportFromCluster(name, 80)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(report).To(ContainSubstring("gateway_state=running"))
+	})
+
 	It("mounts plugin bundles and rolls out updated plugin content", func() {
 		name := "hermesagent-observed-paths"
 		pluginSecretName := "hermesagent-plugin-bundle"
@@ -840,7 +907,11 @@ func kubectl(args ...string) (string, error) {
 }
 
 func statefulSetPodName(name string) string {
-	return fmt.Sprintf("%s-0", name)
+	return statefulSetPodNameAt(name, 0)
+}
+
+func statefulSetPodNameAt(name string, ordinal int) string {
+	return fmt.Sprintf("%s-%d", name, ordinal)
 }
 
 func pvcName(name string) string {
@@ -917,15 +988,26 @@ func waitForAgentPhase(name, phase string) {
 }
 
 func waitForServiceEndpointsReady(serviceName string) {
+	waitForServiceEndpointCount(serviceName, 1)
+}
+
+func waitForServiceEndpointCount(serviceName string, count int) {
 	Eventually(func(g Gomega) {
 		output, err := kubectl(
 			"get", "endpointslices.discovery.k8s.io",
 			"-n", hermesAgentNamespace,
 			"-l", fmt.Sprintf("kubernetes.io/service-name=%s", serviceName),
-			"-o", "jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[*]}{end}{end}",
+			"-o", `jsonpath={range .items[*]}{range .endpoints[*]}{.addresses[0]}{"\n"}{end}{end}`,
 		)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(strings.TrimSpace(output)).NotTo(BeEmpty())
+		lines := []string{}
+		for _, line := range strings.Split(output, "\n") {
+			line = strings.TrimSpace(line)
+			if line != "" {
+				lines = append(lines, line)
+			}
+		}
+		g.Expect(lines).To(HaveLen(count))
 	}, 2*time.Minute, time.Second).Should(Succeed())
 }
 

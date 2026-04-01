@@ -23,6 +23,7 @@ import (
 	pathpkg "path"
 	"strings"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -90,6 +91,9 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 	if obj.Spec.Storage.Persistence.Enabled == nil {
 		obj.Spec.Storage.Persistence.Enabled = &defaultPersistenceEnabled
 	}
+	if obj.Spec.Replicas == 0 {
+		obj.Spec.Replicas = 1
+	}
 	if obj.Spec.AutomountServiceAccountToken == nil {
 		obj.Spec.AutomountServiceAccountToken = &defaultAutomountServiceAccountToken
 	}
@@ -109,6 +113,9 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 
 	if obj.Spec.NetworkPolicy.Enabled == nil {
 		obj.Spec.NetworkPolicy.Enabled = &defaultNetworkPolicyEnabled
+	}
+	if obj.Spec.UpdateStrategy.Type == "" {
+		obj.Spec.UpdateStrategy.Type = appsv1.RollingUpdateStatefulSetStrategyType
 	}
 
 	defaultProbe(&obj.Spec.Probes.Startup, probeDefaults{
@@ -195,6 +202,8 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("secretRefs"), obj.Spec.SecretRefs)...)
 	allErrs = append(allErrs, validateFileMounts(specPath.Child("fileMounts"), obj.Spec.FileMounts)...)
 	allErrs = append(allErrs, validateLocalObjectReferences(specPath.Child("imagePullSecrets"), obj.Spec.ImagePullSecrets)...)
+	allErrs = append(allErrs, validateReplicas(specPath, obj.Spec)...)
+	allErrs = append(allErrs, validateUpdateStrategy(specPath.Child("updateStrategy"), obj.Spec.UpdateStrategy)...)
 	allErrs = append(allErrs, validateService(specPath.Child("service"), obj.Spec.Service)...)
 	allErrs = append(allErrs, validateNetworkPolicy(specPath.Child("networkPolicy"), obj.Spec.NetworkPolicy)...)
 	allErrs = append(allErrs, validateStorage(specPath.Child("storage", "persistence"), obj.Spec.Storage.Persistence)...)
@@ -386,6 +395,29 @@ func validateMode(path *field.Path, mode *int32) field.ErrorList {
 	}
 	if *mode < 0 || *mode > 0o777 {
 		allErrs = append(allErrs, field.Invalid(path, *mode, "must be between 0 and 0777"))
+	}
+	return allErrs
+}
+
+func validateReplicas(path *field.Path, spec hermesv1alpha1.HermesAgentSpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if spec.Replicas <= 0 {
+		allErrs = append(allErrs, field.Invalid(path.Child("replicas"), spec.Replicas, "replicas must be greater than zero"))
+	}
+	persistenceEnabled := spec.Storage.Persistence.Enabled == nil || *spec.Storage.Persistence.Enabled
+	if spec.Replicas > 1 && persistenceEnabled {
+		allErrs = append(allErrs, field.Invalid(path.Child("replicas"), spec.Replicas, "replicas greater than 1 require spec.storage.persistence.enabled=false because the operator does not manage shared Hermes state"))
+	}
+	return allErrs
+}
+
+func validateUpdateStrategy(path *field.Path, strategy hermesv1alpha1.HermesAgentUpdateStrategySpec) field.ErrorList {
+	allErrs := field.ErrorList{}
+	if strategy.Type == appsv1.OnDeleteStatefulSetStrategyType && strategy.RollingUpdate != nil {
+		allErrs = append(allErrs, field.Invalid(path.Child("rollingUpdate"), strategy.RollingUpdate, "rollingUpdate is only valid when type is RollingUpdate"))
+	}
+	if strategy.RollingUpdate != nil && strategy.RollingUpdate.Partition != nil && *strategy.RollingUpdate.Partition < 0 {
+		allErrs = append(allErrs, field.Invalid(path.Child("rollingUpdate", "partition"), *strategy.RollingUpdate.Partition, "partition must be zero or greater"))
 	}
 	return allErrs
 }

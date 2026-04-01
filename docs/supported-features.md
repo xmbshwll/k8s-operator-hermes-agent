@@ -8,13 +8,15 @@ It is the canonical answer to "is this supported?"
 | Area | Status | Notes |
 | --- | --- | --- |
 | One `HermesAgent` CRD | Supported | The operator manages a single resource kind for Hermes workloads. |
-| One Hermes pod per `HermesAgent` | Supported | The managed workload is a singleton `StatefulSet`. |
-| Persistent Hermes state | Supported | PVC-backed `HERMES_HOME` is the default. |
+| One or more Hermes pods per `HermesAgent` | Supported | Single replica is the default. Multi-replica HermesAgent workloads are supported when persistence is disabled. |
+| Persistent Hermes state | Supported | PVC-backed `HERMES_HOME` is the default for singleton workloads. |
 | Inline or referenced config files | Supported | `spec.config` and `spec.gatewayConfig` support `raw`, `configMapRef`, and `secretRef`. |
 | Env and mounted secret/config inputs | Supported | `env`, `envFrom`, `secretRefs`, and `fileMounts` are part of the supported API. File delivery is supported; what the runtime image does with those files is runtime-specific. |
 | Probe management | Supported | Startup, readiness, and liveness probes are managed by the operator. |
-| Optional `Service` | Supported | This is the supported HTTP exposure path for a single Hermes pod when the runtime image already serves the required interface. |
+| Replica and rollout controls | Supported | `spec.replicas` and `spec.updateStrategy` control the managed StatefulSet rollout for supported stateless multi-replica workloads. |
+| Optional `Service` | Supported | This is the supported HTTP exposure path for Hermes pods when the runtime image already serves the required interface. |
 | Optional egress `NetworkPolicy` | Supported | The generated policy is intentionally simple and egress-focused. |
+| Automatic multi-replica `PodDisruptionBudget` | Supported | The operator creates a `PodDisruptionBudget` with `maxUnavailable: 1` when replicas are greater than `1`. |
 | Admission defaulting and validation | Supported | Invalid specs should be rejected before reconcile. |
 | Helm chart and generated install bundle | Supported | These are the supported operator install paths. |
 
@@ -32,7 +34,7 @@ These flows are present in docs or samples, but they are not first-class product
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Multi-replica Hermes workloads | Out of scope | The operator manages a singleton `StatefulSet` today. |
+| Shared persistent Hermes state across replicas | Out of scope | Multi-replica workloads require `spec.storage.persistence.enabled=false`; the operator does not manage shared Hermes state. |
 | Autoscaling | Out of scope | No HPA or operator-driven scaling model is provided. |
 | Default ingress resources | Out of scope | The supported HTTP path is Service-based; ingress remains user-managed. |
 | Browser sidecars | Out of scope | Not part of the current product shape. |

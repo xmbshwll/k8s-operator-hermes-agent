@@ -289,6 +289,39 @@ Standard Kubernetes pod termination grace period for the managed Hermes workload
 Use this when Hermes needs longer shutdown time to flush session state, emit final runtime files, or disconnect from external systems cleanly before Kubernetes sends `SIGKILL`.
 When omitted, the operator leaves the field unset and Kubernetes applies its normal default.
 
+### `spec.replicas`
+
+```yaml
+spec:
+  replicas: 2
+```
+
+Controls how many Hermes pods the operator runs in the managed StatefulSet.
+The default is `1`.
+When you set `replicas` greater than `1`, you must also set `spec.storage.persistence.enabled: false`.
+The operator does not manage shared Hermes state across replicas.
+When replicas are greater than `1`, the operator also creates a `PodDisruptionBudget` with `maxUnavailable: 1`.
+
+### `spec.updateStrategy`
+
+```yaml
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      partition: 1
+```
+
+Controls StatefulSet rollout behavior for Hermes pods.
+
+| Field | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `type` | string | `RollingUpdate` | Supported values are `RollingUpdate` and `OnDelete` |
+| `rollingUpdate.partition` | int32 | unset | Only valid when `type` is `RollingUpdate`; pods with ordinal lower than the partition wait for an explicit strategy change before updating |
+
+Use `OnDelete` when you want manual, pod-by-pod restart control.
+Use `RollingUpdate` with `partition` when you want staged updates across a multi-replica StatefulSet.
+
 ## Storage
 
 ```yaml
@@ -486,6 +519,8 @@ The webhook currently rejects:
 - invalid file mount projection items such as duplicate keys, duplicate output paths, invalid relative paths, or invalid file modes
 - invalid file mount source combinations or duplicate file mount paths
 - invalid storage sizes
+- invalid replica counts or multi-replica specs that also enable persistence
+- invalid StatefulSet update strategy combinations
 - invalid enabled Service ports
 - invalid NetworkPolicy destination peers or additional ports
 
@@ -493,6 +528,8 @@ It also defaults:
 - mode
 - image tag and pull policy
 - persistence settings
+- replica count
+- rollout strategy type
 - service settings
 - network policy enablement
 - probe profiles

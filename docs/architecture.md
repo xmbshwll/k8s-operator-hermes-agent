@@ -7,27 +7,37 @@ Its job is deliberately narrow: reconcile the resources needed to run one Hermes
 
 For each `HermesAgent`, the controller may create or manage:
 - generated `ConfigMap` resources for inline file content
-- a `PersistentVolumeClaim` for Hermes state
-- a singleton `StatefulSet`
+- a `PersistentVolumeClaim` for Hermes state when persistence is enabled
+- a managed `StatefulSet`
 - an optional `Service`
 - an optional egress-focused `NetworkPolicy`
+- an automatic `PodDisruptionBudget` when replicas are greater than `1`
 
-## Why a singleton StatefulSet
+## Why the workload still uses StatefulSet
 
-Hermes is treated as a stateful process, not a horizontally scalable stateless service.
+Hermes is still treated as a workload with meaningful local runtime identity.
 
-The operator uses a `StatefulSet` with `replicas: 1` because Hermes keeps important local runtime state such as:
+The operator keeps `StatefulSet` as the workload primitive because it preserves:
+- stable pod identity
+- explicit rollout controls such as `OnDelete` and RollingUpdate partitioning
+- a clean distinction between singleton persistent workloads and stateless multi-replica workloads
+
+Single replica remains the default because Hermes keeps important local runtime state such as:
 - configuration files
 - session and gateway state
 - pid and status files used by probes
 - other on-disk Hermes home data
 
-A singleton `Deployment` would be possible, but `StatefulSet` makes the workload shape explicit:
-- stable pod identity
-- stable storage attachment behavior
-- a clear model that Hermes is not intended for multi-replica fan-out in v1
+## Multi-replica boundary
 
-This choice keeps the design honest. The operator does not pretend Hermes is safely scalable across multiple identical pods when the runtime state says otherwise.
+The operator now supports multi-replica HermesAgent workloads, but only for the stateless path.
+That means:
+- set `spec.replicas` greater than `1`
+- set `spec.storage.persistence.enabled=false`
+- use `spec.updateStrategy` when you want explicit StatefulSet rollout behavior
+
+The operator intentionally rejects multi-replica specs that also ask for managed persistence.
+It does not try to coordinate or bless shared Hermes state across replicas.
 
 ## Why persistent storage is the default
 
@@ -40,8 +50,8 @@ Persistence is the default because Hermes writes state that should survive:
 - controller rollouts
 - config-triggered restarts
 
-Without persistence, Hermes falls back to `emptyDir`, which is acceptable only for disposable or test deployments.
-For real gateway workloads, losing local state on restart is the wrong default.
+Without persistence, Hermes falls back to `emptyDir`, which is acceptable for disposable, HTTP-serving, or stateless multi-replica deployments.
+For real singleton gateway workloads that need durable local state, losing that state on restart is the wrong default.
 
 ## Workload and filesystem contract
 
@@ -240,8 +250,9 @@ For concrete install commands, supported values, and upgrade notes, see `README.
 ## Supported scope vs example-only paths
 
 The supported v1 product scope is:
-- one Hermes pod per `HermesAgent`
-- persistent-state gateway management
+- one or more Hermes pods per `HermesAgent`
+- persistent-state singleton gateway management
+- stateless multi-replica HermesAgent workloads with rollout controls and automatic `PodDisruptionBudget` generation
 - operator-managed config, storage, probes, optional `Service`, and optional egress `NetworkPolicy`
 - Service-based HTTP exposure for custom Hermes runtime images that serve HTTP under `hermes gateway`
 - webhook-validated and defaulted CR instances
@@ -279,7 +290,7 @@ That keeps the default install smaller and easier to reason about.
 ## v1 non-goals
 
 The following are explicitly out of scope for v1:
-- multi-replica Hermes deployments
+- shared persistent Hermes state across replicas
 - autoscaling
 - browser sidecars
 - Docker-in-Docker terminal backends
@@ -290,7 +301,7 @@ The following are explicitly out of scope for v1:
 
 These are intentionally excluded so the first release stays focused on one clean path: install the operator, create one `HermesAgent`, and run Hermes reliably with persistent state.
 
-For HTTP-serving workloads, the clean supported boundary is now: the operator manages the Hermes pod plus its Service, while ingress and higher-level HTTP platform concerns stay outside the operator.
+For HTTP-serving workloads, the clean supported boundary is now: the operator manages the Hermes pods plus their Service, while ingress and higher-level HTTP platform concerns stay outside the operator.
 
 ## Relationship between operator and Hermes runtime
 

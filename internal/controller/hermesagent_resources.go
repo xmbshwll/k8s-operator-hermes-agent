@@ -14,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -425,6 +426,23 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 	}
 }
 
+func buildPodDisruptionBudget(agent *hermesv1alpha1.HermesAgent) *policyv1.PodDisruptionBudget {
+	labels := resourceLabels(agent)
+	maxUnavailable := intstr.FromInt32(1)
+
+	return &policyv1.PodDisruptionBudget{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      agent.Name,
+			Namespace: agent.Namespace,
+			Labels:    labels,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector:       &metav1.LabelSelector{MatchLabels: labels},
+			MaxUnavailable: &maxUnavailable,
+		},
+	}
+}
+
 func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend string) *networkingv1.NetworkPolicy {
 	labels := resourceLabels(agent)
 	destinations := networkPolicyPeers(agent.Spec.NetworkPolicy.Destinations)
@@ -464,7 +482,7 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend strin
 }
 
 func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
-	replicas := int32(1)
+	replicas := desiredReplicas(agent)
 	selectorLabels := resourceLabels(agent)
 	podLabels := managedPodLabels(agent)
 	volumes := append([]corev1.Volume{}, inputs.Volumes...)
@@ -498,8 +516,9 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 			Labels:    selectorLabels,
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas:    &replicas,
-			ServiceName: agent.Name,
+			Replicas:       &replicas,
+			ServiceName:    agent.Name,
+			UpdateStrategy: statefulSetUpdateStrategy(agent),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: selectorLabels,
 			},
@@ -731,12 +750,47 @@ func copyBoolPtr(value *bool) *bool {
 	return &copied
 }
 
+func copyInt32Ptr(value *int32) *int32 {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+
 func copyInt64Ptr(value *int64) *int64 {
 	if value == nil {
 		return nil
 	}
 	copied := *value
 	return &copied
+}
+
+func desiredReplicas(agent *hermesv1alpha1.HermesAgent) int32 {
+	if agent.Spec.Replicas > 0 {
+		return agent.Spec.Replicas
+	}
+	return 1
+}
+
+func statefulSetUpdateStrategy(agent *hermesv1alpha1.HermesAgent) appsv1.StatefulSetUpdateStrategy {
+	strategyType := agent.Spec.UpdateStrategy.Type
+	if strategyType == "" {
+		strategyType = appsv1.RollingUpdateStatefulSetStrategyType
+	}
+
+	strategy := appsv1.StatefulSetUpdateStrategy{Type: strategyType}
+	if strategyType == appsv1.RollingUpdateStatefulSetStrategyType {
+		strategy.RollingUpdate = &appsv1.RollingUpdateStatefulSetStrategy{}
+		if agent.Spec.UpdateStrategy.RollingUpdate != nil {
+			strategy.RollingUpdate.Partition = copyInt32Ptr(agent.Spec.UpdateStrategy.RollingUpdate.Partition)
+		}
+	}
+	return strategy
+}
+
+func podDisruptionBudgetEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+	return desiredReplicas(agent) > 1
 }
 
 func automountServiceAccountToken(agent *hermesv1alpha1.HermesAgent) *bool {

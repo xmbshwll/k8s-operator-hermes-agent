@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -661,6 +662,30 @@ func TestBuildServiceUsesDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildPodDisruptionBudgetUsesDefaultMaxUnavailable(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Namespace = testNamespace
+	agent.Spec.Replicas = 3
+
+	podDisruptionBudget := buildPodDisruptionBudget(agent)
+	if podDisruptionBudget.Name != testAgentName {
+		t.Fatalf("expected PodDisruptionBudget name %q, got %q", testAgentName, podDisruptionBudget.Name)
+	}
+	if podDisruptionBudget.Namespace != testNamespace {
+		t.Fatalf("expected PodDisruptionBudget namespace %q, got %q", testNamespace, podDisruptionBudget.Namespace)
+	}
+	if podDisruptionBudget.Spec.MaxUnavailable == nil || podDisruptionBudget.Spec.MaxUnavailable.IntVal != 1 {
+		t.Fatalf("expected PodDisruptionBudget maxUnavailable 1, got %+v", podDisruptionBudget.Spec.MaxUnavailable)
+	}
+	if podDisruptionBudget.Spec.MinAvailable != nil {
+		t.Fatalf("expected PodDisruptionBudget minAvailable to be unset, got %+v", podDisruptionBudget.Spec.MinAvailable)
+	}
+	if podDisruptionBudget.Spec.Selector == nil || podDisruptionBudget.Spec.Selector.MatchLabels["app.kubernetes.io/instance"] != testAgentName {
+		t.Fatalf("expected PodDisruptionBudget selector for instance %q, got %+v", testAgentName, podDisruptionBudget.Spec.Selector)
+	}
+}
+
 func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	agent := &hermesv1alpha1.HermesAgent{}
 	agent.Name = testAgentName
@@ -1056,6 +1081,12 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	if statefulSet.Spec.Replicas == nil || *statefulSet.Spec.Replicas != 1 {
 		t.Fatalf("expected StatefulSet replicas to be 1, got %+v", statefulSet.Spec.Replicas)
 	}
+	if statefulSet.Spec.UpdateStrategy.Type != appsv1.RollingUpdateStatefulSetStrategyType {
+		t.Fatalf("expected default StatefulSet update strategy RollingUpdate, got %q", statefulSet.Spec.UpdateStrategy.Type)
+	}
+	if statefulSet.Spec.UpdateStrategy.RollingUpdate == nil {
+		t.Fatal("expected default StatefulSet rollingUpdate strategy to be configured")
+	}
 
 	container := statefulSet.Spec.Template.Spec.Containers[0]
 	if container.Name != hermesContainerName {
@@ -1105,6 +1136,50 @@ func TestBuildStatefulSetPreservesTerminationGracePeriodSeconds(t *testing.T) {
 	podSpec := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan)).Spec.Template.Spec
 	if podSpec.TerminationGracePeriodSeconds == nil || *podSpec.TerminationGracePeriodSeconds != terminationGracePeriodSeconds {
 		t.Fatalf("expected terminationGracePeriodSeconds %d, got %+v", terminationGracePeriodSeconds, podSpec.TerminationGracePeriodSeconds)
+	}
+}
+
+func TestBuildStatefulSetUsesExplicitReplicasAndUpdateStrategy(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Replicas = 3
+	agent.Spec.UpdateStrategy.Type = appsv1.RollingUpdateStatefulSetStrategyType
+	partition := int32(2)
+	agent.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: &partition}
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	if statefulSet.Spec.Replicas == nil || *statefulSet.Spec.Replicas != 3 {
+		t.Fatalf("expected StatefulSet replicas 3, got %+v", statefulSet.Spec.Replicas)
+	}
+	if statefulSet.Spec.UpdateStrategy.Type != appsv1.RollingUpdateStatefulSetStrategyType {
+		t.Fatalf("expected StatefulSet update strategy RollingUpdate, got %q", statefulSet.Spec.UpdateStrategy.Type)
+	}
+	if statefulSet.Spec.UpdateStrategy.RollingUpdate == nil || statefulSet.Spec.UpdateStrategy.RollingUpdate.Partition == nil || *statefulSet.Spec.UpdateStrategy.RollingUpdate.Partition != 2 {
+		t.Fatalf("expected StatefulSet rollingUpdate partition 2, got %+v", statefulSet.Spec.UpdateStrategy.RollingUpdate)
+	}
+}
+
+func TestBuildStatefulSetUsesOnDeleteUpdateStrategy(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.UpdateStrategy.Type = appsv1.OnDeleteStatefulSetStrategyType
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	statefulSet := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan))
+	if statefulSet.Spec.UpdateStrategy.Type != appsv1.OnDeleteStatefulSetStrategyType {
+		t.Fatalf("expected StatefulSet update strategy OnDelete, got %q", statefulSet.Spec.UpdateStrategy.Type)
+	}
+	if statefulSet.Spec.UpdateStrategy.RollingUpdate != nil {
+		t.Fatalf("expected OnDelete strategy to omit rollingUpdate, got %+v", statefulSet.Spec.UpdateStrategy.RollingUpdate)
 	}
 }
 

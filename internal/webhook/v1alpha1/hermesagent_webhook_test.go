@@ -24,6 +24,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,10 @@ import (
 
 	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
 )
+
+func ptrTo[T any](value T) *T {
+	return &value
+}
 
 var _ = Describe("HermesAgent Webhook", func() {
 	var (
@@ -75,6 +80,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(obj.Spec.Terminal.Backend).To(BeEmpty())
 			Expect(obj.Spec.Storage.Persistence.Enabled).NotTo(BeNil())
 			Expect(*obj.Spec.Storage.Persistence.Enabled).To(BeTrue())
+			Expect(obj.Spec.Replicas).To(Equal(int32(1)))
+			Expect(obj.Spec.UpdateStrategy.Type).To(Equal(appsv1.RollingUpdateStatefulSetStrategyType))
 			Expect(obj.Spec.AutomountServiceAccountToken).NotTo(BeNil())
 			Expect(*obj.Spec.AutomountServiceAccountToken).To(BeFalse())
 			Expect(obj.Spec.Storage.Persistence.Size).To(Equal("10Gi"))
@@ -105,6 +112,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(stored.Spec.Image.Tag).To(Equal(hermesv1alpha1.DefaultHermesAgentImageTag))
 			Expect(stored.Spec.Image.PullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(stored.Spec.Terminal.Backend).To(BeEmpty())
+			Expect(stored.Spec.Replicas).To(Equal(int32(1)))
+			Expect(stored.Spec.UpdateStrategy.Type).To(Equal(appsv1.RollingUpdateStatefulSetStrategyType))
 			Expect(stored.Spec.AutomountServiceAccountToken).NotTo(BeNil())
 			Expect(*stored.Spec.AutomountServiceAccountToken).To(BeFalse())
 			Expect(stored.Spec.Service.Type).To(Equal(corev1.ServiceTypeClusterIP))
@@ -152,11 +161,14 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err.Error()).To(ContainSubstring("spec.config.secretRef.key"))
 		})
 
-		It("rejects invalid storage size, service port, network policy destinations and ports, empty image pull secrets, and invalid file mounts", func() {
+		It("rejects invalid storage size, replicas, rollout settings, service port, network policy destinations and ports, empty image pull secrets, and invalid file mounts", func() {
 			namespace := newNamespace()
 			invalidMode := int32(0o1000)
 			obj := newMinimalHermesAgent(namespace, fmt.Sprintf("invalid-settings-%d", time.Now().UnixNano()))
 			obj.Spec.Storage.Persistence.Size = "0Gi"
+			obj.Spec.Replicas = 2
+			obj.Spec.UpdateStrategy.Type = appsv1.OnDeleteStatefulSetStrategyType
+			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(-1))}
 			obj.Spec.Service.Enabled = true
 			obj.Spec.Service.Port = -1
 			obj.Spec.Service.TargetPort = -1
@@ -194,6 +206,9 @@ var _ = Describe("HermesAgent Webhook", func() {
 			_, err := validator.ValidateCreate(ctx, obj)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.storage.persistence.size"))
+			Expect(err.Error()).To(ContainSubstring("spec.replicas"))
+			Expect(err.Error()).To(ContainSubstring("spec.updateStrategy.rollingUpdate"))
+			Expect(err.Error()).To(ContainSubstring("spec.updateStrategy.rollingUpdate.partition"))
 			Expect(err.Error()).To(ContainSubstring("spec.service.port"))
 			Expect(err.Error()).To(ContainSubstring("spec.service.targetPort"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[0]"))
@@ -226,7 +241,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 		})
 
-		It("admits a valid HermesAgent", func() {
+		It("admits a valid multi-replica HermesAgent when persistence is disabled", func() {
 			namespace := newNamespace()
 			defaultMode := int32(0o444)
 			privateKeyMode := int32(0o600)
@@ -257,6 +272,10 @@ var _ = Describe("HermesAgent Webhook", func() {
 					Path: "known_hosts",
 				}},
 			}}
+			obj.Spec.Replicas = 2
+			obj.Spec.Storage.Persistence.Enabled = ptrTo(false)
+			obj.Spec.UpdateStrategy.Type = appsv1.RollingUpdateStatefulSetStrategyType
+			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(1))}
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478}
 

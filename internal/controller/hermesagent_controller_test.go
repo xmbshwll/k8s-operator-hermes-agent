@@ -9,6 +9,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,6 +56,9 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -130,6 +134,9 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	configSecret := &corev1.Secret{
@@ -245,6 +252,9 @@ func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testin
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	externalConfigMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
@@ -319,6 +329,9 @@ func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testin
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	externalGatewayConfigMap := &corev1.ConfigMap{
@@ -532,6 +545,9 @@ func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-1"},
@@ -601,6 +617,9 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-2"},
@@ -648,6 +667,9 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	if statefulSet.Spec.Replicas == nil || *statefulSet.Spec.Replicas != 1 {
 		t.Fatalf("expected StatefulSet replicas to be 1, got %+v", statefulSet.Spec.Replicas)
 	}
+	if statefulSet.Spec.UpdateStrategy.Type != appsv1.RollingUpdateStatefulSetStrategyType {
+		t.Fatalf("expected StatefulSet update strategy RollingUpdate, got %q", statefulSet.Spec.UpdateStrategy.Type)
+	}
 
 	container := statefulSet.Spec.Template.Spec.Containers[0]
 	if container.Image != "ghcr.io/example/hermes-agent:gateway-core" {
@@ -684,6 +706,9 @@ func TestReconcileDoesNotCreateServiceByDefault(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -732,6 +757,9 @@ func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -791,6 +819,9 @@ func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-conflict"},
@@ -849,6 +880,9 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -937,6 +971,9 @@ func TestReconcileDoesNotCreateNetworkPolicyByDefault(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-default"},
@@ -984,6 +1021,9 @@ func TestReconcileLeavesNonOwnedNetworkPolicyUntouchedWhenDisabled(t *testing.T)
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -1045,6 +1085,9 @@ func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	enabled := true
@@ -1109,6 +1152,9 @@ func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	enabled := true
 	configMap := &corev1.ConfigMap{
@@ -1156,6 +1202,103 @@ func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing
 	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[2].Ports, corev1.ProtocolTCP, networkPolicySSHPort)
 }
 
+func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorkloads(t *testing.T) {
+	scheme := runtime.NewScheme()
+	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
+	}
+	if err := corev1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
+	}
+	if err := appsv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(AppsV1) returned error: %v", err)
+	}
+	if err := networkingv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
+
+	persistenceEnabled := false
+	partition := int32(1)
+	agent := &hermesv1alpha1.HermesAgent{
+		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pdb-enabled"},
+		Spec: hermesv1alpha1.HermesAgentSpec{
+			Image: hermesv1alpha1.HermesAgentImageSpec{
+				Repository: "ghcr.io/example/hermes-agent",
+				Tag:        "gateway-core",
+				PullPolicy: corev1.PullIfNotPresent,
+			},
+			Config:   hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Replicas: 3,
+			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+				Enabled: &persistenceEnabled,
+			}},
+			UpdateStrategy: hermesv1alpha1.HermesAgentUpdateStrategySpec{
+				Type: appsv1.RollingUpdateStatefulSetStrategyType,
+				RollingUpdate: &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{
+					Partition: &partition,
+				},
+			},
+		},
+	}
+
+	k8sClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithObjects(agent).
+		Build()
+
+	reconciler := &HermesAgentReconciler{Client: k8sClient, Scheme: scheme}
+	req := ctrl.Request{NamespacedName: client.ObjectKeyFromObject(agent)}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("first reconcile returned error: %v", err)
+	}
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second reconcile returned error: %v", err)
+	}
+
+	var statefulSet appsv1.StatefulSet
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &statefulSet); err != nil {
+		t.Fatalf("get StatefulSet returned error: %v", err)
+	}
+	if statefulSet.Spec.Replicas == nil || *statefulSet.Spec.Replicas != 3 {
+		t.Fatalf("expected StatefulSet replicas 3, got %+v", statefulSet.Spec.Replicas)
+	}
+	if statefulSet.Spec.UpdateStrategy.RollingUpdate == nil || statefulSet.Spec.UpdateStrategy.RollingUpdate.Partition == nil || *statefulSet.Spec.UpdateStrategy.RollingUpdate.Partition != 1 {
+		t.Fatalf("expected StatefulSet rolling update partition 1, got %+v", statefulSet.Spec.UpdateStrategy.RollingUpdate)
+	}
+
+	var podDisruptionBudget policyv1.PodDisruptionBudget
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &podDisruptionBudget); err != nil {
+		t.Fatalf("get PodDisruptionBudget returned error: %v", err)
+	}
+	if !metav1.IsControlledBy(&podDisruptionBudget, agent) {
+		t.Fatal("expected PodDisruptionBudget to be owned by HermesAgent")
+	}
+	if podDisruptionBudget.Spec.MaxUnavailable == nil || podDisruptionBudget.Spec.MaxUnavailable.IntVal != 1 {
+		t.Fatalf("expected PodDisruptionBudget maxUnavailable 1, got %+v", podDisruptionBudget.Spec.MaxUnavailable)
+	}
+
+	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
+		t.Fatalf("get HermesAgent returned error: %v", err)
+	}
+	updatedAgent.Spec.Replicas = 1
+	if err := k8sClient.Update(context.Background(), updatedAgent); err != nil {
+		t.Fatalf("update HermesAgent returned error: %v", err)
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile after scaling down returned error: %v", err)
+	}
+
+	if err := k8sClient.Get(context.Background(), req.NamespacedName, &podDisruptionBudget); !apierrors.IsNotFound(err) {
+		t.Fatalf("expected PodDisruptionBudget to be deleted when replicas return to 1, got error: %v", err)
+	}
+}
+
 func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
 	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
@@ -1169,6 +1312,9 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	enabled := true
@@ -1253,6 +1399,9 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	configMap := &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
@@ -1305,6 +1454,9 @@ func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -1361,6 +1513,9 @@ func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
@@ -1403,6 +1558,9 @@ func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	quantity := resourceMustParse(t, "5Gi")
@@ -1460,6 +1618,9 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	storageClassName := "fast-ssd"
@@ -1532,6 +1693,9 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	defaultedStorageClassName := "cluster-default"
@@ -1607,6 +1771,9 @@ func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
@@ -1652,6 +1819,9 @@ func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	sshSecret := &corev1.Secret{
@@ -1713,6 +1883,9 @@ func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testi
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	optional := true
 	agent := &hermesv1alpha1.HermesAgent{
@@ -1769,6 +1942,9 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -1850,6 +2026,9 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{
@@ -1945,6 +2124,9 @@ func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
 	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
+	}
 
 	agent := &hermesv1alpha1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-status-service"},
@@ -1993,6 +2175,9 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	baseAgent := &hermesv1alpha1.HermesAgent{
@@ -2090,6 +2275,9 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 	}
 	if err := networkingv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(NetworkingV1) returned error: %v", err)
+	}
+	if err := policyv1.AddToScheme(scheme); err != nil {
+		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
 	agent := &hermesv1alpha1.HermesAgent{

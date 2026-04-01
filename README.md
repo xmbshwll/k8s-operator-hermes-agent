@@ -15,13 +15,12 @@ This repository contains the **operator**. It does **not** build the Hermes runt
 This operator is intentionally narrow in scope for its first production-ready release.
 The supported product shape today is:
 - one `HermesAgent` resource kind
-- one Hermes pod per resource
-- persistent local state via PVC by default
+- single-replica Hermes by default, with optional multi-replica stateless workloads when persistence is disabled
+- persistent local state via PVC by default for singleton workloads
 - egress-first deployments
-- operator-managed config, storage, probe, `Service`, and egress `NetworkPolicy` resources for that single Hermes instance
+- operator-managed config, storage, probe, rollout, `Service`, egress `NetworkPolicy`, and multi-replica `PodDisruptionBudget` resources
 
 The operator does **not** currently claim first-class support for:
-- multi-replica Hermes workloads
 - autoscaling
 - default ingress generation
 - a built-in Open WebUI integration path
@@ -40,14 +39,16 @@ A `HermesAgent` resource lets you declare:
 - persistent storage settings
 - resource requests and limits
 - startup, readiness, and liveness probes
+- replica count and StatefulSet rollout strategy for stateless multi-replica workloads
 - optional service exposure with distinct service and target ports, plus egress NetworkPolicy generation with extra TCP/UDP ports and optional destination allowlists for newer workflows
 
 The controller then reconciles:
 - `ConfigMap` resources for inline config
 - a PVC for Hermes state when persistence is enabled
-- a singleton `StatefulSet`
+- a managed `StatefulSet`
 - an optional `Service`
 - an optional egress-focused `NetworkPolicy`, with configurable extra TCP/UDP ports and optional destination allowlists when the defaults are too narrow
+- an automatic `PodDisruptionBudget` when replicas are greater than `1`
 
 ## Prerequisites
 
@@ -182,6 +183,8 @@ kubectl describe hermesagent hermesagent-sample
 ```
 
 `kubectl get hermesagents` now surfaces the phase, ready replicas, persistence state, managed Service name, and managed PVC name directly from status so common rollout and storage issues are visible without drilling into owned resources first.
+
+For multi-replica HermesAgent workloads, keep `spec.storage.persistence.enabled: false`. The operator does not manage shared Hermes state across replicas.
 
 Watch the managed pod:
 

@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -173,6 +174,26 @@ type HermesAgentProbesSpec struct {
 	RequireConnectedPlatform bool `json:"requireConnectedPlatform,omitempty"`
 }
 
+// HermesAgentRollingUpdateStrategySpec defines rolling update controls for Hermes StatefulSets.
+type HermesAgentRollingUpdateStrategySpec struct {
+	// partition is the ordinal at which the StatefulSet controller starts applying RollingUpdate changes.
+	// +optional
+	Partition *int32 `json:"partition,omitempty"`
+}
+
+// HermesAgentUpdateStrategySpec defines rollout controls for the managed StatefulSet.
+type HermesAgentUpdateStrategySpec struct {
+	// type is the StatefulSet update strategy.
+	// +kubebuilder:validation:Enum=RollingUpdate;OnDelete
+	// +kubebuilder:default:="RollingUpdate"
+	// +optional
+	Type appsv1.StatefulSetUpdateStrategyType `json:"type,omitempty"`
+
+	// rollingUpdate configures the RollingUpdate strategy.
+	// +optional
+	RollingUpdate *HermesAgentRollingUpdateStrategySpec `json:"rollingUpdate,omitempty"`
+}
+
 // HermesAgentServiceSpec defines an optional Service for exposed modes.
 type HermesAgentServiceSpec struct {
 	// enabled controls whether a Service is created.
@@ -316,6 +337,16 @@ type HermesAgentSpec struct {
 	// When omitted, Kubernetes uses the standard default.
 	// +optional
 	TerminationGracePeriodSeconds *int64 `json:"terminationGracePeriodSeconds,omitempty"`
+
+	// replicas is the number of Hermes pods to run.
+	// Multi-replica HermesAgent workloads require persistence to be disabled.
+	// +kubebuilder:default:=1
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// updateStrategy configures rollout behavior for the managed StatefulSet.
+	// +optional
+	UpdateStrategy HermesAgentUpdateStrategySpec `json:"updateStrategy,omitempty"`
 
 	// storage defines Hermes state persistence.
 	// +optional

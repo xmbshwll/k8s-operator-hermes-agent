@@ -26,6 +26,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	policyv1 "k8s.io/api/policy/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -58,6 +59,7 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	utilruntime.Must(hermesv1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(policyv1.AddToScheme(scheme.Scheme))
 	// +kubebuilder:scaffold:scheme
 
 	By("bootstrapping test environment")

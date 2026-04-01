@@ -28,6 +28,7 @@ Use those events together with the status conditions to narrow the issue quickly
 | `StatefulSetReconcileFailed` | The operator could not create or update the StatefulSet | Check operator logs for API errors or immutable field conflicts |
 | `ServiceReconcileFailed` | The optional Service could not be reconciled | Check for a same-name Service that is not owned by the HermesAgent |
 | `NetworkPolicyReconcileFailed` | The optional NetworkPolicy could not be reconciled | Check for a same-name NetworkPolicy that is not owned by the HermesAgent |
+| `PodDisruptionBudgetReconcileFailed` | The multi-replica PodDisruptionBudget could not be reconciled | Check for a same-name PodDisruptionBudget that is not owned by the HermesAgent |
 | `Ready` | Persistence and workload are ready | No action needed |
 
 ## Common failure patterns
@@ -87,6 +88,7 @@ kubectl get pvc <name>-data -n <namespace> -o yaml
 Fix:
 - `spec.storage.persistence.size` can be increased in place when the storage class supports expansion
 - changes to `spec.storage.persistence.accessModes` or `storageClassName` require claim replacement
+- multi-replica HermesAgent workloads must disable managed persistence entirely; the operator does not coordinate shared Hermes state across replicas
 - supported migration path 1: create a new `HermesAgent` with a different name, wait for the new PVC to bind, migrate Hermes state if needed, then cut traffic over
 - supported migration path 2: for in-place replacement, back up any needed Hermes state, delete the existing workload/PVC deliberately, and then re-apply the same `HermesAgent` so the operator recreates the claim with the new immutable settings
 - the operator intentionally does not delete or mutate the existing PVC automatically because that would be destructive
