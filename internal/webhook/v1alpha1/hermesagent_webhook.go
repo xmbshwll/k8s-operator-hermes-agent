@@ -395,6 +395,12 @@ func validateService(path *field.Path, service hermesv1alpha1.HermesAgentService
 	if service.Enabled && service.Port <= 0 {
 		allErrs = append(allErrs, field.Invalid(path.Child("port"), service.Port, "port must be greater than zero when service is enabled"))
 	}
+	if service.TargetPort < 0 {
+		allErrs = append(allErrs, field.Invalid(path.Child("targetPort"), service.TargetPort, "targetPort must be zero or greater"))
+	}
+	if service.Enabled && service.TargetPort != 0 && service.TargetPort <= 0 {
+		allErrs = append(allErrs, field.Invalid(path.Child("targetPort"), service.TargetPort, "targetPort must be greater than zero when service is enabled"))
+	}
 	return allErrs
 }
 

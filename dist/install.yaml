@@ -1761,6 +1761,12 @@ spec:
                     description: port is the service port.
                     format: int32
                     type: integer
+                  targetPort:
+                    description: |-
+                      targetPort is the container port targeted by the Service.
+                      When omitted, the operator uses the same value as port.
+                    format: int32
+                    type: integer
                   type:
                     default: ClusterIP
                     description: type is the Kubernetes Service type.

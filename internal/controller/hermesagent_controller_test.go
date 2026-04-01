@@ -864,7 +864,8 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 				Enabled:     true,
 				Annotations: map[string]string{"prometheus.io/scrape": "true"},
 				Type:        corev1.ServiceTypeClusterIP,
-				Port:        8080,
+				Port:        80,
+				TargetPort:  8080,
 			},
 		},
 	}
@@ -894,8 +895,11 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 	if service.Spec.Type != corev1.ServiceTypeClusterIP {
 		t.Fatalf("expected Service type %q, got %q", corev1.ServiceTypeClusterIP, service.Spec.Type)
 	}
-	if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != 8080 {
-		t.Fatalf("expected Service port 8080, got %+v", service.Spec.Ports)
+	if len(service.Spec.Ports) != 1 || service.Spec.Ports[0].Port != 80 {
+		t.Fatalf("expected Service port 80, got %+v", service.Spec.Ports)
+	}
+	if service.Spec.Ports[0].TargetPort.IntVal != 8080 {
+		t.Fatalf("expected Service targetPort 8080, got %+v", service.Spec.Ports[0].TargetPort)
 	}
 	if service.Annotations["prometheus.io/scrape"] != "true" {
 		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)

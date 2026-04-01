@@ -159,6 +159,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.Storage.Persistence.Size = "0Gi"
 			obj.Spec.Service.Enabled = true
 			obj.Spec.Service.Port = -1
+			obj.Spec.Service.TargetPort = -1
 			obj.Spec.NetworkPolicy.Destinations = []hermesv1alpha1.HermesAgentNetworkPolicyPeer{{
 				Except: []string{"10.0.0.0/24"},
 			}, {
@@ -194,6 +195,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("spec.storage.persistence.size"))
 			Expect(err.Error()).To(ContainSubstring("spec.service.port"))
+			Expect(err.Error()).To(ContainSubstring("spec.service.targetPort"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[0]"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[0].except"))
 			Expect(err.Error()).To(ContainSubstring("spec.networkPolicy.destinations[1].cidr"))

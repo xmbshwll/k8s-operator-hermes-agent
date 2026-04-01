@@ -229,7 +229,8 @@ spec:
       value: "8080"
   service:
     enabled: true
-    port: 8080
+    port: 80
+    targetPort: 8080
 `, name, hermesAgentNamespace, hermesRuntimeImageSpecYAML("    ")))
 		Expect(err).NotTo(HaveOccurred())
 		defer os.Remove(manifest)
@@ -242,7 +243,7 @@ spec:
 		waitForAgentPhase(name, "Ready")
 
 		waitForServiceEndpointsReady(name)
-		report, err := readServiceReportFromCluster(name, 8080)
+		report, err := readServiceReportFromCluster(name, 80)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(report).To(ContainSubstring("gateway_state=running"))
 		Expect(report).To(ContainSubstring("path=/data/hermes/gateway_state.json"))
@@ -734,7 +735,8 @@ spec:
     enabled: true
     annotations:
       prometheus.io/scrape: "true"
-    port: 8080
+    port: 80
+    targetPort: 8080
   networkPolicy:
     enabled: true
     additionalTCPPorts:

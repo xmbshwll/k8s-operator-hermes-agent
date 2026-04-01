@@ -66,6 +66,7 @@ spec:
   service:
     enabled: true
     type: ClusterIP
-    port: 8080
+    port: 80
+    targetPort: 8080
   networkPolicy:
     enabled: false

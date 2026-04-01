@@ -358,7 +358,8 @@ spec:
   service:
     enabled: true
     type: ClusterIP
-    port: 8080
+    port: 80
+    targetPort: 8080
 ```
 
 | Field | Type | Default | Notes |
@@ -366,14 +367,17 @@ spec:
 | `enabled` | bool | `false` | Whether the operator creates a Service |
 | `annotations` | object | empty | Additional annotations applied to the managed Service |
 | `type` | string | `ClusterIP` | Standard Kubernetes Service type |
-| `port` | int | `8080` | Must be greater than zero when enabled |
+| `port` | int | `8080` | Published Service port; must be greater than zero when enabled |
+| `targetPort` | int | same as `port` | Container port targeted by the Service |
 
 The operator manages a Service with the same name as the `HermesAgent`.
 If another same-name Service already exists and is not owned by the `HermesAgent`, reconciliation fails.
 
 Use `service.annotations` for integrations such as Prometheus scraping metadata, cloud load-balancer controller hints, or cluster policy annotations.
 
-This is the supported Kubernetes exposure path for HTTP-oriented deployment stories such as a custom API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen service port and implement the HTTP contract you expect. A stock Hermes image should not be assumed to expose that interface by default.
+This is the supported Kubernetes exposure path for HTTP-oriented deployment stories such as a custom API-serving Hermes runtime or a Hermes backend consumed by a separate Open WebUI deployment. The operator still manages only the Hermes pod; your runtime image must already listen on the chosen target port and implement the HTTP contract you expect. A stock Hermes image should not be assumed to expose that interface by default.
+
+Use `targetPort` when you want the in-cluster Service port to differ from the port your runtime image actually listens on. When service exposure is enabled, the operator also declares the corresponding container port on the managed Hermes pod.
 
 ## Optional NetworkPolicy
 

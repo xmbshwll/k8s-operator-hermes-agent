@@ -418,7 +418,7 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 			Selector: labels,
 			Ports: []corev1.ServicePort{{
 				Port:       port,
-				TargetPort: intstr.FromInt32(port),
+				TargetPort: intstr.FromInt32(serviceTargetPort(agent)),
 				Protocol:   corev1.ProtocolTCP,
 			}},
 		},
@@ -482,6 +482,15 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 		},
 	)
 
+	containerPorts := []corev1.ContainerPort{}
+	if serviceEnabled(agent) {
+		containerPorts = append(containerPorts, corev1.ContainerPort{
+			Name:          "service",
+			ContainerPort: serviceTargetPort(agent),
+			Protocol:      corev1.ProtocolTCP,
+		})
+	}
+
 	return &appsv1.StatefulSet{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      agent.Name,
@@ -515,6 +524,7 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 						Args:            hermesArgs(agent),
 						Env:             inputs.Env,
 						EnvFrom:         inputs.EnvFrom,
+						Ports:           containerPorts,
 						VolumeMounts:    volumeMounts,
 						Resources:       agent.Spec.Resources,
 						SecurityContext: hermesContainerSecurityContext(),
@@ -1201,6 +1211,13 @@ func servicePort(agent *hermesv1alpha1.HermesAgent) int32 {
 		return 8080
 	}
 	return agent.Spec.Service.Port
+}
+
+func serviceTargetPort(agent *hermesv1alpha1.HermesAgent) int32 {
+	if agent.Spec.Service.TargetPort <= 0 {
+		return servicePort(agent)
+	}
+	return agent.Spec.Service.TargetPort
 }
 
 func persistenceSize(agent *hermesv1alpha1.HermesAgent) string {

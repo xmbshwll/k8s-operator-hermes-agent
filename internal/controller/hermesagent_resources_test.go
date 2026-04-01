@@ -666,15 +666,16 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Service.Type = corev1.ServiceTypeNodePort
-	agent.Spec.Service.Port = 9443
+	agent.Spec.Service.Port = 80
+	agent.Spec.Service.TargetPort = 9443
 	agent.Spec.Service.Annotations = map[string]string{"prometheus.io/scrape": "true"}
 
 	service := buildService(agent)
 	if service.Spec.Type != corev1.ServiceTypeNodePort {
 		t.Fatalf("expected Service type %q, got %q", corev1.ServiceTypeNodePort, service.Spec.Type)
 	}
-	if service.Spec.Ports[0].Port != 9443 {
-		t.Fatalf("expected Service port 9443, got %d", service.Spec.Ports[0].Port)
+	if service.Spec.Ports[0].Port != 80 {
+		t.Fatalf("expected Service port 80, got %d", service.Spec.Ports[0].Port)
 	}
 	if service.Spec.Ports[0].TargetPort.IntVal != 9443 {
 		t.Fatalf("expected Service targetPort 9443, got %+v", service.Spec.Ports[0].TargetPort)
@@ -1066,6 +1067,9 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	if len(container.Args) != 2 || container.Args[0] != "hermes" || container.Args[1] != hermesGatewayMode {
 		t.Fatalf("expected Hermes args [hermes gateway], got %+v", container.Args)
 	}
+	if len(container.Ports) != 0 {
+		t.Fatalf("expected no container ports when service is disabled, got %+v", container.Ports)
+	}
 	if container.ImagePullPolicy != corev1.PullIfNotPresent {
 		t.Fatalf("expected image pull policy %q, got %q", corev1.PullIfNotPresent, container.ImagePullPolicy)
 	}
@@ -1084,6 +1088,27 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	}
 	if statefulSet.Spec.Template.Spec.AutomountServiceAccountToken == nil || *statefulSet.Spec.Template.Spec.AutomountServiceAccountToken {
 		t.Fatalf("expected automountServiceAccountToken to default to false, got %+v", statefulSet.Spec.Template.Spec.AutomountServiceAccountToken)
+	}
+}
+
+func TestBuildStatefulSetUsesServiceTargetPortForContainerPort(t *testing.T) {
+	agent := &hermesv1alpha1.HermesAgent{}
+	agent.Name = testAgentName
+	agent.Spec.Service.Enabled = true
+	agent.Spec.Service.Port = 80
+	agent.Spec.Service.TargetPort = 8080
+
+	plan, err := buildConfigPlan(agent)
+	if err != nil {
+		t.Fatalf("buildConfigPlan returned error: %v", err)
+	}
+
+	container := buildStatefulSet(agent, buildPodTemplateInputs(agent, plan)).Spec.Template.Spec.Containers[0]
+	if len(container.Ports) != 1 {
+		t.Fatalf("expected one container port when service is enabled, got %+v", container.Ports)
+	}
+	if container.Ports[0].ContainerPort != 8080 {
+		t.Fatalf("expected container port 8080, got %+v", container.Ports)
 	}
 }
 

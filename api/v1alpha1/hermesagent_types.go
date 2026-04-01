@@ -191,6 +191,11 @@ type HermesAgentServiceSpec struct {
 	// +kubebuilder:default:=8080
 	// +optional
 	Port int32 `json:"port,omitempty"`
+
+	// targetPort is the container port targeted by the Service.
+	// When omitted, the operator uses the same value as port.
+	// +optional
+	TargetPort int32 `json:"targetPort,omitempty"`
 }
 
 // HermesAgentNetworkPolicyPeer defines one allowed egress destination peer.
