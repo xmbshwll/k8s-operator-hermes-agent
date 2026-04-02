@@ -130,8 +130,8 @@ jobs:
           kubectl label --overwrite namespace hermes-chart-release pod-security.kubernetes.io/enforce=restricted
 
           sed \
-            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
-            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            -e 's#repository: ghcr.io/xmbshwll/hermes-agent-docker#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: v2026.3.30#tag: v0.0.1#' \
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-release.yaml
 
           kubectl apply -n hermes-chart-release -f /tmp/hermesagent-chart-release.yaml
@@ -296,8 +296,8 @@ jobs:
           kubectl label --overwrite namespace hermes-chart-upgrade pod-security.kubernetes.io/enforce=restricted
 
           sed \
-            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
-            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            -e 's#repository: ghcr.io/xmbshwll/hermes-agent-docker#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: v2026.3.30#tag: v0.0.1#' \
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-upgrade.yaml
 
           kubectl apply -n hermes-chart-upgrade -f /tmp/hermesagent-chart-upgrade.yaml

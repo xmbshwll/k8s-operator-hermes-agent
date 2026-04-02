@@ -251,8 +251,8 @@ jobs:
           kubectl label --overwrite namespace hermes-chart-e2e pod-security.kubernetes.io/enforce=restricted
 
           sed \
-            -e 's#repository: ghcr.io/example/hermes-agent#repository: example.com/hermes-agent-e2e#' \
-            -e 's#tag: gateway-core#tag: v0.0.1#' \
+            -e 's#repository: ghcr.io/xmbshwll/hermes-agent-docker#repository: example.com/hermes-agent-e2e#' \
+            -e 's#tag: v2026.3.30#tag: v0.0.1#' \
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-e2e.yaml
 
           kubectl apply -n hermes-chart-e2e -f /tmp/hermesagent-chart-e2e.yaml
