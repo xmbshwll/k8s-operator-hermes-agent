@@ -135,8 +135,21 @@ jobs:
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-release.yaml
 
           kubectl apply -n hermes-chart-release -f /tmp/hermesagent-chart-release.yaml
-          kubectl wait -n hermes-chart-release --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
-          kubectl rollout status -n hermes-chart-release statefulset/hermesagent-sample --timeout=5m
+
+          for _ in $(seq 1 60); do
+            kubectl get -n hermes-chart-release statefulset/hermesagent-sample >/dev/null 2>&1 && break
+            sleep 2
+          done
+
+          if ! kubectl rollout status -n hermes-chart-release statefulset/hermesagent-sample --timeout=10m; then
+            kubectl describe hermesagent hermesagent-sample -n hermes-chart-release || true
+            kubectl get statefulset,pod,pvc,configmap -n hermes-chart-release || true
+            kubectl describe pod hermesagent-sample-0 -n hermes-chart-release || true
+            kubectl logs hermesagent-sample-0 -n hermes-chart-release || true
+            exit 1
+          fi
+
+          kubectl wait -n hermes-chart-release --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=10m
 
       - name: Validate webhook rejection path
         run: |
@@ -301,8 +314,21 @@ jobs:
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-upgrade.yaml
 
           kubectl apply -n hermes-chart-upgrade -f /tmp/hermesagent-chart-upgrade.yaml
-          kubectl wait -n hermes-chart-upgrade --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
-          kubectl rollout status -n hermes-chart-upgrade statefulset/hermesagent-sample --timeout=5m
+
+          for _ in $(seq 1 60); do
+            kubectl get -n hermes-chart-upgrade statefulset/hermesagent-sample >/dev/null 2>&1 && break
+            sleep 2
+          done
+
+          if ! kubectl rollout status -n hermes-chart-upgrade statefulset/hermesagent-sample --timeout=10m; then
+            kubectl describe hermesagent hermesagent-sample -n hermes-chart-upgrade || true
+            kubectl get statefulset,pod,pvc,configmap -n hermes-chart-upgrade || true
+            kubectl describe pod hermesagent-sample-0 -n hermes-chart-upgrade || true
+            kubectl logs hermesagent-sample-0 -n hermes-chart-upgrade || true
+            exit 1
+          fi
+
+          kubectl wait -n hermes-chart-upgrade --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=10m
 
   validate-e2e:
     name: Validate full e2e suite

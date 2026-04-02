@@ -256,8 +256,21 @@ jobs:
             config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-e2e.yaml
 
           kubectl apply -n hermes-chart-e2e -f /tmp/hermesagent-chart-e2e.yaml
-          kubectl wait -n hermes-chart-e2e --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=5m
-          kubectl rollout status -n hermes-chart-e2e statefulset/hermesagent-sample --timeout=5m
+
+          for _ in $(seq 1 60); do
+            kubectl get -n hermes-chart-e2e statefulset/hermesagent-sample >/dev/null 2>&1 && break
+            sleep 2
+          done
+
+          if ! kubectl rollout status -n hermes-chart-e2e statefulset/hermesagent-sample --timeout=10m; then
+            kubectl describe hermesagent hermesagent-sample -n hermes-chart-e2e || true
+            kubectl get statefulset,pod,pvc,configmap -n hermes-chart-e2e || true
+            kubectl describe pod hermesagent-sample-0 -n hermes-chart-e2e || true
+            kubectl logs hermesagent-sample-0 -n hermes-chart-e2e || true
+            exit 1
+          fi
+
+          kubectl wait -n hermes-chart-e2e --for=jsonpath='{.status.phase}'=Ready hermesagent/hermesagent-sample --timeout=10m
 
       - name: Validate upgrade from previous published chart when available
         if: steps.vars.outputs.previous_tag != ''
