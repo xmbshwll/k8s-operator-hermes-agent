@@ -35,7 +35,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -58,7 +58,7 @@ var _ = BeforeSuite(func() {
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
-	utilruntime.Must(hermesv1alpha1.AddToScheme(scheme.Scheme))
+	utilruntime.Must(hermesv1.AddToScheme(scheme.Scheme))
 	utilruntime.Must(policyv1.AddToScheme(scheme.Scheme))
 	// +kubebuilder:scaffold:scheme
 

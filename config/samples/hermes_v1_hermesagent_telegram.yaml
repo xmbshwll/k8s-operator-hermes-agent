@@ -1,29 +1,29 @@
-# This sample builds on the supported Service-based HTTP exposure path.
-# It still requires a custom Hermes runtime image that already serves an
-# OpenAI-compatible or Open WebUI-compatible HTTP API on port 8080 while still
-# running `hermes gateway`. It is not a stock-Hermes example.
 apiVersion: v1
 kind: Secret
 metadata:
-  name: hermesagent-openwebui-env
+  name: hermesagent-telegram-secrets
   labels:
     app.kubernetes.io/name: k8s-operator-hermes-agent
     app.kubernetes.io/managed-by: kubectl
 stringData:
   OPENROUTER_API_KEY: sk-or-replace-me
+  TELEGRAM_BOT_TOKEN: 123456789:replace-me
+  TELEGRAM_ALLOWED_USERS: "123456789"
+  TELEGRAM_HOME_CHANNEL: "-1001234567890"
+  TELEGRAM_HOME_CHANNEL_NAME: "Ops"
 type: Opaque
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
-  name: hermesagent-openwebui
+  name: hermesagent-telegram
   labels:
     app.kubernetes.io/name: k8s-operator-hermes-agent
     app.kubernetes.io/managed-by: kubectl
 spec:
   image:
-    repository: ghcr.io/example/hermes-agent
-    tag: gateway-core
+    repository: ghcr.io/xmbshwll/hermes-agent-docker
+    tag: v2026.3.30
     pullPolicy: IfNotPresent
   mode: gateway
   config:
@@ -31,14 +31,24 @@ spec:
       model: openrouter/anthropic/claude-opus-4.1
       terminal:
         backend: local
+      display:
+        tool_progress: new
   gatewayConfig:
     raw: |
       {
-        "platforms": {}
+        "platforms": {
+          "telegram": {}
+        },
+        "reset_by_platform": {
+          "telegram": {
+            "mode": "idle",
+            "idle_minutes": 240
+          }
+        }
       }
   envFrom:
     - secretRef:
-        name: hermesagent-openwebui-env
+        name: hermesagent-telegram-secrets
   storage:
     persistence:
       enabled: true
@@ -47,6 +57,7 @@ spec:
         - ReadWriteOnce
   terminal:
     backend: local
+  automountServiceAccountToken: false
   resources:
     requests:
       cpu: 500m
@@ -64,10 +75,8 @@ spec:
     liveness:
       enabled: true
       periodSeconds: 10
+    requireConnectedPlatform: true
   service:
-    enabled: true
-    type: ClusterIP
-    port: 80
-    targetPort: 8080
-  networkPolicy:
     enabled: false
+  networkPolicy:
+    enabled: true

@@ -1,12 +1,12 @@
 # HermesAgent API reference
 
 This document is the user-facing reference for the `HermesAgent` custom resource.
-It complements the schema markers in `api/v1alpha1/hermesagent_types.go` with practical behavior notes.
+It complements the schema markers in `api/v1/hermesagent_types.go` with practical behavior notes.
 
 ## Resource
 
 ```yaml
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 ```
 
@@ -537,7 +537,7 @@ It also defaults:
 ## Example
 
 ```yaml
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: hermesagent-sample

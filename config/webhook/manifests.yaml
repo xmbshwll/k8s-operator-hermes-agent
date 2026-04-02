@@ -10,14 +10,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /mutate-hermes-nous-ai-v1alpha1-hermesagent
+      path: /mutate-hermes-nous-ai-v1-hermesagent
   failurePolicy: Fail
-  name: mhermesagent-v1alpha1.kb.io
+  name: mhermesagent-v1.kb.io
   rules:
   - apiGroups:
     - hermes.nous.ai
     apiVersions:
-    - v1alpha1
+    - v1
     operations:
     - CREATE
     - UPDATE
@@ -36,14 +36,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-hermes-nous-ai-v1alpha1-hermesagent
+      path: /validate-hermes-nous-ai-v1-hermesagent
   failurePolicy: Fail
-  name: vhermesagent-v1alpha1.kb.io
+  name: vhermesagent-v1.kb.io
   rules:
   - apiGroups:
     - hermes.nous.ai
     apiVersions:
-    - v1alpha1
+    - v1
     operations:
     - CREATE
     - UPDATE

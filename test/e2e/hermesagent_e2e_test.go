@@ -66,7 +66,7 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		By("rendering the sample HermesAgent with the end-to-end runtime image")
-		sampleManifestPath, err = renderSampleManifest("config/samples/hermes_v1alpha1_hermesagent.yaml")
+		sampleManifestPath, err = renderSampleManifest("config/samples/hermes_v1_hermesagent.yaml")
 		Expect(err).NotTo(HaveOccurred())
 
 		By("applying the sample HermesAgent")
@@ -121,7 +121,7 @@ var _ = Describe("HermesAgent end-to-end", Ordered, func() {
 	It("keeps strict readiness false until a platform reports connected", func() {
 		name := "hermesagent-connected-platform"
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -206,7 +206,7 @@ spec:
 	It("supports the Service-based HTTP exposure path for custom runtimes", func() {
 		name := "hermesagent-http-service"
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -252,7 +252,7 @@ spec:
 	It("supports multi-replica stateless rollouts with a PodDisruptionBudget", func() {
 		name := "hermesagent-ha-service"
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -330,7 +330,7 @@ stringData:
     def register():
       return "plugin-ready"
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -458,7 +458,7 @@ spec:
 
 	It("rejects invalid HermesAgent specs through the webhook", func() {
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: invalid-mixed
@@ -484,7 +484,7 @@ spec:
 	It("surfaces missing referenced config through status and events", func() {
 		name := "hermesagent-missing-ref"
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -539,7 +539,7 @@ data:
     terminal:
       backend: local
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -617,7 +617,7 @@ stringData:
   known_hosts: |
     github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAinitial
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -691,7 +691,7 @@ type: kubernetes.io/dockerconfigjson
 stringData:
   .dockerconfigjson: '{"auths":{"example.com":{"username":"user","password":"pass","auth":"dXNlcjpwYXNz"}}}'
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s
@@ -780,7 +780,7 @@ spec:
 	It("creates and removes optional Service and NetworkPolicy resources", func() {
 		name := "hermesagent-optional-resources"
 		manifest, err := renderManifest(fmt.Sprintf(`
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: %s

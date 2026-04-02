@@ -143,15 +143,15 @@ make helm-deploy \
 
 Sample manifests live under [`config/samples/`](config/samples/).
 
-Start with the minimal sample at [`config/samples/hermes_v1alpha1_hermesagent.yaml`](config/samples/hermes_v1alpha1_hermesagent.yaml).
+Start with the minimal sample at [`config/samples/hermes_v1_hermesagent.yaml`](config/samples/hermes_v1_hermesagent.yaml).
 For other real deployment paths, see:
 - [`config/samples/README.md`](config/samples/README.md)
-- [`config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`](config/samples/hermes_v1alpha1_hermesagent_telegram.yaml)
-- [`config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml`](config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml)
-- [`config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`](config/samples/hermes_v1alpha1_hermesagent_ssh.yaml)
-- [`config/samples/hermes_v1alpha1_hermesagent_api_server.yaml`](config/samples/hermes_v1alpha1_hermesagent_api_server.yaml)
-- [`config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml`](config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml)
-- [`config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`](config/samples/hermes_v1alpha1_hermesagent_plugins.yaml)
+- [`config/samples/hermes_v1_hermesagent_telegram.yaml`](config/samples/hermes_v1_hermesagent_telegram.yaml)
+- [`config/samples/hermes_v1_hermesagent_secret_config.yaml`](config/samples/hermes_v1_hermesagent_secret_config.yaml)
+- [`config/samples/hermes_v1_hermesagent_ssh.yaml`](config/samples/hermes_v1_hermesagent_ssh.yaml)
+- [`config/samples/hermes_v1_hermesagent_api_server.yaml`](config/samples/hermes_v1_hermesagent_api_server.yaml)
+- [`config/samples/hermes_v1_hermesagent_openwebui.yaml`](config/samples/hermes_v1_hermesagent_openwebui.yaml)
+- [`config/samples/hermes_v1_hermesagent_plugins.yaml`](config/samples/hermes_v1_hermesagent_plugins.yaml)
 
 The API server and Open WebUI samples rely on the existing optional `Service`, and they only make sense when you provide a custom Hermes runtime image that already serves the expected HTTP interface on port `8080` while running under `hermes gateway`.
 
@@ -332,7 +332,7 @@ make package-chart \
 - [Troubleshooting guide](docs/troubleshooting.md)
 - [Release workflow](docs/release.md)
 - [Sample catalog](config/samples/README.md)
-- [Minimal HermesAgent](config/samples/hermes_v1alpha1_hermesagent.yaml)
+- [Minimal HermesAgent](config/samples/hermes_v1_hermesagent.yaml)
 
 ## License
 

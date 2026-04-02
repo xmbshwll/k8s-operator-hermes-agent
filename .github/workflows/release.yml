@@ -132,7 +132,7 @@ jobs:
           sed \
             -e 's#repository: ghcr.io/xmbshwll/hermes-agent-docker#repository: example.com/hermes-agent-e2e#' \
             -e 's#tag: v2026.3.30#tag: v0.0.1#' \
-            config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-release.yaml
+            config/samples/hermes_v1_hermesagent.yaml > /tmp/hermesagent-chart-release.yaml
 
           kubectl apply -n hermes-chart-release -f /tmp/hermesagent-chart-release.yaml
 
@@ -154,7 +154,7 @@ jobs:
       - name: Validate webhook rejection path
         run: |
           cat <<'EOF' >/tmp/hermesagent-invalid.yaml
-          apiVersion: hermes.nous.ai/v1alpha1
+          apiVersion: hermes.nous.ai/v1
           kind: HermesAgent
           metadata:
             name: hermesagent-invalid
@@ -311,7 +311,7 @@ jobs:
           sed \
             -e 's#repository: ghcr.io/xmbshwll/hermes-agent-docker#repository: example.com/hermes-agent-e2e#' \
             -e 's#tag: v2026.3.30#tag: v0.0.1#' \
-            config/samples/hermes_v1alpha1_hermesagent.yaml > /tmp/hermesagent-chart-upgrade.yaml
+            config/samples/hermes_v1_hermesagent.yaml > /tmp/hermesagent-chart-upgrade.yaml
 
           kubectl apply -n hermes-chart-upgrade -f /tmp/hermesagent-chart-upgrade.yaml
 

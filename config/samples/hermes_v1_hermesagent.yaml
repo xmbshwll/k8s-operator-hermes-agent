@@ -1,27 +1,10 @@
-# This sample only demonstrates file delivery. Your runtime image must decide
-# whether and how mounted plugin files are discovered or loaded.
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hermesagent-plugins
-  labels:
-    app.kubernetes.io/name: k8s-operator-hermes-agent
-    app.kubernetes.io/managed-by: kubectl
-stringData:
-  plugin.py: |
-    def register():
-      return "replace-me"
-  README.md: |
-    This key is intentionally not projected by the sample HermesAgent.
-type: Opaque
----
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
-  name: hermesagent-plugins
   labels:
     app.kubernetes.io/name: k8s-operator-hermes-agent
-    app.kubernetes.io/managed-by: kubectl
+    app.kubernetes.io/managed-by: kustomize
+  name: hermesagent-sample
 spec:
   image:
     repository: ghcr.io/xmbshwll/hermes-agent-docker
@@ -30,7 +13,7 @@ spec:
   mode: gateway
   config:
     raw: |
-      model: openrouter/anthropic/claude-opus-4.1
+      model: anthropic/claude-opus-4.1
       terminal:
         backend: local
   gatewayConfig:
@@ -38,13 +21,6 @@ spec:
       {
         "platforms": {}
       }
-  fileMounts:
-    - mountPath: /var/run/hermes/plugins
-      secretRef:
-        name: hermesagent-plugins
-      items:
-        - key: plugin.py
-          path: plugin.py
   storage:
     persistence:
       enabled: true
@@ -53,6 +29,7 @@ spec:
         - ReadWriteOnce
   terminal:
     backend: local
+  automountServiceAccountToken: false
   resources:
     requests:
       cpu: 500m
@@ -63,6 +40,7 @@ spec:
   probes:
     startup:
       enabled: true
+      initialDelaySeconds: 5
       periodSeconds: 10
     readiness:
       enabled: true

@@ -13,7 +13,7 @@ stringData:
   OPENROUTER_API_KEY: sk-or-replace-me
 type: Opaque
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: hermesagent-api-server

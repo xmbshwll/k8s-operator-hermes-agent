@@ -314,8 +314,8 @@ That separation is deliberate. The operator manages Kubernetes resources; it doe
 
 ## Files to know
 
-- `api/v1alpha1/hermesagent_types.go` — CRD schema
+- `api/v1/hermesagent_types.go` — CRD schema
 - `internal/controller/hermesagent_resources.go` — reconciled resource shapes
-- `config/samples/hermes_v1alpha1_hermesagent.yaml` — sample custom resource
+- `config/samples/hermes_v1_hermesagent.yaml` — sample custom resource
 - `charts/chart/` — operator installation chart
 - `README.md` — user-facing install and usage guide

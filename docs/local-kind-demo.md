@@ -98,11 +98,11 @@ ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30
 ```
 
 That image is already used by the general samples such as:
-- `config/samples/hermes_v1alpha1_hermesagent.yaml`
-- `config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml`
-- `config/samples/hermes_v1alpha1_hermesagent_ssh.yaml`
-- `config/samples/hermes_v1alpha1_hermesagent_plugins.yaml`
-- `config/samples/hermes_v1alpha1_hermesagent_telegram.yaml`
+- `config/samples/hermes_v1_hermesagent.yaml`
+- `config/samples/hermes_v1_hermesagent_secret_config.yaml`
+- `config/samples/hermes_v1_hermesagent_ssh.yaml`
+- `config/samples/hermes_v1_hermesagent_plugins.yaml`
+- `config/samples/hermes_v1_hermesagent_telegram.yaml`
 
 This guide stays on those non-HTTP functionality paths.
 
@@ -134,7 +134,7 @@ kubectl get crd hermesagents.hermes.nous.ai
 ### 6.2 Apply the minimal HermesAgent sample
 
 ```sh
-kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent.yaml
+kubectl apply -n hermes-demo -f config/samples/hermes_v1_hermesagent.yaml
 ```
 
 Wait for it:
@@ -171,7 +171,7 @@ Things to confirm:
 #### Secret-backed config sample
 
 ```sh
-kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+kubectl apply -n hermes-demo -f config/samples/hermes_v1_hermesagent_secret_config.yaml
 kubectl describe hermesagent hermesagent-secret-config -n hermes-demo
 ```
 
@@ -185,7 +185,7 @@ This validates:
 Edit the placeholder secret values first, then:
 
 ```sh
-kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
+kubectl apply -n hermes-demo -f config/samples/hermes_v1_hermesagent_ssh.yaml
 kubectl describe hermesagent hermesagent-ssh -n hermes-demo
 kubectl get networkpolicy -n hermes-demo
 ```
@@ -200,7 +200,7 @@ This validates:
 #### Plugin file-delivery sample
 
 ```sh
-kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+kubectl apply -n hermes-demo -f config/samples/hermes_v1_hermesagent_plugins.yaml
 kubectl describe hermesagent hermesagent-plugins -n hermes-demo
 ```
 
@@ -257,7 +257,7 @@ kubectl get crd hermesagents.hermes.nous.ai
 
 ```sh
 kubectl create namespace hermes-demo
-kubectl apply -n hermes-demo -f config/samples/hermes_v1alpha1_hermesagent.yaml
+kubectl apply -n hermes-demo -f config/samples/hermes_v1_hermesagent.yaml
 ```
 
 Wait for it:
@@ -457,7 +457,7 @@ If you want the shortest possible proof that things work:
    - `make deploy IMG=k8s-operator-hermes-agent:local`
    - or `helm upgrade --install ... ./charts/chart ...`
 5. create `hermes-demo`
-6. apply `config/samples/hermes_v1alpha1_hermesagent.yaml`
+6. apply `config/samples/hermes_v1_hermesagent.yaml`
 7. wait for `hermesagent/hermesagent-sample` to become ready
 8. inspect it with `kubectl describe hermesagent hermesagent-sample -n hermes-demo`
 9. inspect logs and generated resources with `kubectl`

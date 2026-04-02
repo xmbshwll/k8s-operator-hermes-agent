@@ -2,5 +2,5 @@
 # Additional scenario-specific samples are documented in README.md and should
 # be applied directly with `kubectl apply -f`.
 resources:
-- hermes_v1alpha1_hermesagent.yaml
+- hermes_v1_hermesagent.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

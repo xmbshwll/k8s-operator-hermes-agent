@@ -282,7 +282,7 @@ HELM_EXTRA_ARGS ?=
 ## CRD bundle to apply before CRD-first Helm upgrades
 CRD_BUNDLE ?= dist/hermesagents.hermes.nous.ai-crd.yaml
 ## Version to use when packaging the Helm chart
-CHART_VERSION ?= 0.1.0
+CHART_VERSION ?= 0.2.0
 ## App version to use when packaging the Helm chart
 CHART_APP_VERSION ?= $(CHART_VERSION)
 ## Image repository baked into packaged Helm chart values

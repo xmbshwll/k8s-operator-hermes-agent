@@ -14,14 +14,14 @@ webhooks:
     service:
       name: {{ include "k8s-operator-hermes-agent.resourceName" (dict "suffix" "webhook-service" "context" $) }}
       namespace: {{ .Release.Namespace }}
-      path: /validate-hermes-nous-ai-v1alpha1-hermesagent
+      path: /validate-hermes-nous-ai-v1-hermesagent
   failurePolicy: Fail
-  name: vhermesagent-v1alpha1.kb.io
+  name: vhermesagent-v1.kb.io
   rules:
   - apiGroups:
     - hermes.nous.ai
     apiVersions:
-    - v1alpha1
+    - v1
     operations:
     - CREATE
     - UPDATE

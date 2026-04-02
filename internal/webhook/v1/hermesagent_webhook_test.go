@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
 import (
 	"errors"
@@ -30,7 +30,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 func ptrTo[T any](value T) *T {
@@ -56,14 +56,14 @@ var _ = Describe("HermesAgent Webhook", func() {
 		return namespace.Name
 	}
 
-	newMinimalHermesAgent := func(namespace, name string) *hermesv1alpha1.HermesAgent {
-		return &hermesv1alpha1.HermesAgent{
+	newMinimalHermesAgent := func(namespace, name string) *hermesv1.HermesAgent {
+		return &hermesv1.HermesAgent{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: namespace,
 			},
-			Spec: hermesv1alpha1.HermesAgentSpec{
-				Image: hermesv1alpha1.HermesAgentImageSpec{},
+			Spec: hermesv1.HermesAgentSpec{
+				Image: hermesv1.HermesAgentImageSpec{},
 			},
 		}
 	}
@@ -74,8 +74,8 @@ var _ = Describe("HermesAgent Webhook", func() {
 
 			Expect(defaulter.Default(ctx, obj)).To(Succeed())
 			Expect(obj.Spec.Mode).To(Equal("gateway"))
-			Expect(obj.Spec.Image.Repository).To(Equal(hermesv1alpha1.DefaultHermesAgentImageRepository))
-			Expect(obj.Spec.Image.Tag).To(Equal(hermesv1alpha1.DefaultHermesAgentImageTag))
+			Expect(obj.Spec.Image.Repository).To(Equal(hermesv1.DefaultHermesAgentImageRepository))
+			Expect(obj.Spec.Image.Tag).To(Equal(hermesv1.DefaultHermesAgentImageTag))
 			Expect(obj.Spec.Image.PullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(obj.Spec.Terminal.Backend).To(BeEmpty())
 			Expect(obj.Spec.Storage.Persistence.Enabled).NotTo(BeNil())
@@ -105,11 +105,11 @@ var _ = Describe("HermesAgent Webhook", func() {
 
 			Expect(k8sClient.Create(ctx, obj)).To(Succeed())
 
-			stored := &hermesv1alpha1.HermesAgent{}
+			stored := &hermesv1.HermesAgent{}
 			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(obj), stored)).To(Succeed())
 			Expect(stored.Spec.Mode).To(Equal("gateway"))
-			Expect(stored.Spec.Image.Repository).To(Equal(hermesv1alpha1.DefaultHermesAgentImageRepository))
-			Expect(stored.Spec.Image.Tag).To(Equal(hermesv1alpha1.DefaultHermesAgentImageTag))
+			Expect(stored.Spec.Image.Repository).To(Equal(hermesv1.DefaultHermesAgentImageRepository))
+			Expect(stored.Spec.Image.Tag).To(Equal(hermesv1.DefaultHermesAgentImageTag))
 			Expect(stored.Spec.Image.PullPolicy).To(Equal(corev1.PullIfNotPresent))
 			Expect(stored.Spec.Terminal.Backend).To(BeEmpty())
 			Expect(stored.Spec.Replicas).To(Equal(int32(1)))
@@ -168,11 +168,11 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.Storage.Persistence.Size = "0Gi"
 			obj.Spec.Replicas = 2
 			obj.Spec.UpdateStrategy.Type = appsv1.OnDeleteStatefulSetStrategyType
-			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(-1))}
+			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(-1))}
 			obj.Spec.Service.Enabled = true
 			obj.Spec.Service.Port = -1
 			obj.Spec.Service.TargetPort = -1
-			obj.Spec.NetworkPolicy.Destinations = []hermesv1alpha1.HermesAgentNetworkPolicyPeer{{
+			obj.Spec.NetworkPolicy.Destinations = []hermesv1.HermesAgentNetworkPolicyPeer{{
 				Except: []string{"10.0.0.0/24"},
 			}, {
 				CIDR:              "not-a-cidr",
@@ -181,7 +181,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{0}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{70000}
 			obj.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{}}
-			obj.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+			obj.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 				MountPath:    "relative/path",
 				ConfigMapRef: &corev1.LocalObjectReference{Name: "plugins"},
 				SecretRef:    &corev1.LocalObjectReference{Name: "ssh-auth"},
@@ -191,7 +191,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 				MountPath:   "/var/run/hermes/plugins",
 				SecretRef:   &corev1.LocalObjectReference{},
 				DefaultMode: &invalidMode,
-				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+				Items: []hermesv1.HermesAgentFileProjectionItem{{
 					Path: "../known_hosts",
 				}, {
 					Key:  "known_hosts",
@@ -252,10 +252,10 @@ var _ = Describe("HermesAgent Webhook", func() {
 				SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},
 			}}
 			obj.Spec.SecretRefs = []corev1.LocalObjectReference{{Name: "ssh-auth"}}
-			obj.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+			obj.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 				MountPath:    "/var/run/hermes/plugins",
 				ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
-				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+				Items: []hermesv1.HermesAgentFileProjectionItem{{
 					Key:  "plugin.py",
 					Path: "plugin.py",
 				}},
@@ -263,7 +263,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 				MountPath:   "/var/run/hermes/ssh",
 				SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
 				DefaultMode: &defaultMode,
-				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+				Items: []hermesv1.HermesAgentFileProjectionItem{{
 					Key:  "id_ed25519",
 					Path: "id_ed25519",
 					Mode: &privateKeyMode,
@@ -275,7 +275,7 @@ var _ = Describe("HermesAgent Webhook", func() {
 			obj.Spec.Replicas = 2
 			obj.Spec.Storage.Persistence.Enabled = ptrTo(false)
 			obj.Spec.UpdateStrategy.Type = appsv1.RollingUpdateStatefulSetStrategyType
-			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(1))}
+			obj.Spec.UpdateStrategy.RollingUpdate = &hermesv1.HermesAgentRollingUpdateStrategySpec{Partition: ptrTo(int32(1))}
 			obj.Spec.NetworkPolicy.AdditionalTCPPorts = []int32{8443}
 			obj.Spec.NetworkPolicy.AdditionalUDPPorts = []int32{3478}
 

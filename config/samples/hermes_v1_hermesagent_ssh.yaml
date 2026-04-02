@@ -27,7 +27,7 @@ stringData:
     buildbox.example.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAreplace-me
 type: Opaque
 ---
-apiVersion: hermes.nous.ai/v1alpha1
+apiVersion: hermes.nous.ai/v1
 kind: HermesAgent
 metadata:
   name: hermesagent-ssh

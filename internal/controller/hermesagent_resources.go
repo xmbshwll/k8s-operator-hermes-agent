@@ -20,7 +20,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/yaml"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 const (
@@ -94,11 +94,11 @@ type podTemplateInputs struct {
 	VolumeMounts []corev1.VolumeMount
 }
 
-func buildConfigPlan(agent *hermesv1alpha1.HermesAgent) (configPlan, error) {
+func buildConfigPlan(agent *hermesv1.HermesAgent) (configPlan, error) {
 	return buildConfigPlanWithReferences(agent, referencedInputState{})
 }
 
-func buildConfigPlanWithReferences(agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) (configPlan, error) {
+func buildConfigPlanWithReferences(agent *hermesv1.HermesAgent, referencedInputs referencedInputState) (configPlan, error) {
 	if err := validateFileMountSpecs(agent.Spec.FileMounts); err != nil {
 		return configPlan{}, err
 	}
@@ -126,7 +126,7 @@ func buildConfigPlanWithReferences(agent *hermesv1alpha1.HermesAgent, referenced
 	return plan, nil
 }
 
-func resolveConfigFile(agent *hermesv1alpha1.HermesAgent, id, fileName string, source hermesv1alpha1.HermesAgentConfigSource) (*resolvedConfigFile, error) {
+func resolveConfigFile(agent *hermesv1.HermesAgent, id, fileName string, source hermesv1.HermesAgentConfigSource) (*resolvedConfigFile, error) {
 	hasRaw := source.Raw != ""
 	hasConfigMapRef := source.ConfigMapRef != nil
 	hasSecretRef := source.SecretRef != nil
@@ -175,7 +175,7 @@ func resolveConfigFile(agent *hermesv1alpha1.HermesAgent, id, fileName string, s
 	return file, nil
 }
 
-func validateFileMountSpecs(mounts []hermesv1alpha1.HermesAgentFileMountSpec) error {
+func validateFileMountSpecs(mounts []hermesv1.HermesAgentFileMountSpec) error {
 	seenMountPaths := map[string]int{}
 	for i, mount := range mounts {
 		hasConfigMap := mount.ConfigMapRef != nil
@@ -254,7 +254,7 @@ func validateFileModeValue(mode *int32, fieldName string) error {
 	return nil
 }
 
-func buildPodTemplateInputs(agent *hermesv1alpha1.HermesAgent, plan configPlan) podTemplateInputs {
+func buildPodTemplateInputs(agent *hermesv1.HermesAgent, plan configPlan) podTemplateInputs {
 	inputs := podTemplateInputs{
 		Annotations: map[string]string{configHashAnnotation: plan.Hash},
 		Env:         append([]corev1.EnvVar{}, agent.Spec.Env...),
@@ -322,7 +322,7 @@ func appendSecretReferenceInputs(inputs *podTemplateInputs, secretRefs []corev1.
 	}
 }
 
-func appendFileMountInputs(inputs *podTemplateInputs, fileMounts []hermesv1alpha1.HermesAgentFileMountSpec) {
+func appendFileMountInputs(inputs *podTemplateInputs, fileMounts []hermesv1.HermesAgentFileMountSpec) {
 	for i, fileMount := range fileMounts {
 		volumeSource := buildFileMountVolumeSource(fileMount)
 		if volumeSource == nil {
@@ -341,7 +341,7 @@ func appendFileMountInputs(inputs *podTemplateInputs, fileMounts []hermesv1alpha
 	}
 }
 
-func buildFileMountVolumeSource(fileMount hermesv1alpha1.HermesAgentFileMountSpec) *corev1.VolumeSource {
+func buildFileMountVolumeSource(fileMount hermesv1.HermesAgentFileMountSpec) *corev1.VolumeSource {
 	items := fileMountProjectionItems(fileMount.Items)
 	if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
 		return &corev1.VolumeSource{
@@ -364,7 +364,7 @@ func buildFileMountVolumeSource(fileMount hermesv1alpha1.HermesAgentFileMountSpe
 	return nil
 }
 
-func fileMountProjectionItems(items []hermesv1alpha1.HermesAgentFileProjectionItem) []corev1.KeyToPath {
+func fileMountProjectionItems(items []hermesv1.HermesAgentFileProjectionItem) []corev1.KeyToPath {
 	if len(items) == 0 {
 		return nil
 	}
@@ -380,7 +380,7 @@ func fileMountProjectionItems(items []hermesv1alpha1.HermesAgentFileProjectionIt
 	return projected
 }
 
-func buildPersistentVolumeClaim(agent *hermesv1alpha1.HermesAgent) (*corev1.PersistentVolumeClaim, error) {
+func buildPersistentVolumeClaim(agent *hermesv1.HermesAgent) (*corev1.PersistentVolumeClaim, error) {
 	quantity, err := resource.ParseQuantity(persistenceSize(agent))
 	if err != nil {
 		return nil, fmt.Errorf("parse storage size: %w", err)
@@ -404,7 +404,7 @@ func buildPersistentVolumeClaim(agent *hermesv1alpha1.HermesAgent) (*corev1.Pers
 	}, nil
 }
 
-func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
+func buildService(agent *hermesv1.HermesAgent) *corev1.Service {
 	labels := resourceLabels(agent)
 	port := servicePort(agent)
 
@@ -427,7 +427,7 @@ func buildService(agent *hermesv1alpha1.HermesAgent) *corev1.Service {
 	}
 }
 
-func buildPodDisruptionBudget(agent *hermesv1alpha1.HermesAgent) *policyv1.PodDisruptionBudget {
+func buildPodDisruptionBudget(agent *hermesv1.HermesAgent) *policyv1.PodDisruptionBudget {
 	labels := resourceLabels(agent)
 	maxUnavailable := intstr.FromInt32(1)
 
@@ -444,7 +444,7 @@ func buildPodDisruptionBudget(agent *hermesv1alpha1.HermesAgent) *policyv1.PodDi
 	}
 }
 
-func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend string) *networkingv1.NetworkPolicy {
+func buildNetworkPolicy(agent *hermesv1.HermesAgent, terminalBackend string) *networkingv1.NetworkPolicy {
 	labels := resourceLabels(agent)
 	destinations := networkPolicyPeers(agent.Spec.NetworkPolicy.Destinations)
 	egress := []networkingv1.NetworkPolicyEgressRule{
@@ -482,7 +482,7 @@ func buildNetworkPolicy(agent *hermesv1alpha1.HermesAgent, terminalBackend strin
 	}
 }
 
-func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
+func buildStatefulSet(agent *hermesv1.HermesAgent, inputs podTemplateInputs) *appsv1.StatefulSet {
 	replicas := desiredReplicas(agent)
 	selectorLabels := resourceLabels(agent)
 	podLabels := managedPodLabels(agent)
@@ -560,14 +560,14 @@ func buildStatefulSet(agent *hermesv1alpha1.HermesAgent, inputs podTemplateInput
 	}
 }
 
-func computeConfigHash(agent *hermesv1alpha1.HermesAgent, plan configPlan, referencedInputs referencedInputState) string {
+func computeConfigHash(agent *hermesv1.HermesAgent, plan configPlan, referencedInputs referencedInputState) string {
 	payload := struct {
-		Files            []resolvedConfigFile                      `json:"files"`
-		Env              []corev1.EnvVar                           `json:"env"`
-		EnvFrom          []corev1.EnvFromSource                    `json:"envFrom"`
-		SecretRefs       []corev1.LocalObjectReference             `json:"secretRefs"`
-		FileMounts       []hermesv1alpha1.HermesAgentFileMountSpec `json:"fileMounts"`
-		ReferencedInputs referencedInputState                      `json:"referencedInputs,omitempty"`
+		Files            []resolvedConfigFile                `json:"files"`
+		Env              []corev1.EnvVar                     `json:"env"`
+		EnvFrom          []corev1.EnvFromSource              `json:"envFrom"`
+		SecretRefs       []corev1.LocalObjectReference       `json:"secretRefs"`
+		FileMounts       []hermesv1.HermesAgentFileMountSpec `json:"fileMounts"`
+		ReferencedInputs referencedInputState                `json:"referencedInputs,omitempty"`
 	}{
 		Files:            plan.Files,
 		Env:              agent.Spec.Env,
@@ -634,7 +634,7 @@ func newConfigMapEnvFromSnapshot(name string, optional bool, configMap *corev1.C
 	return snapshot
 }
 
-func newConfigMapProjectionSnapshot(name string, items []hermesv1alpha1.HermesAgentFileProjectionItem, configMap *corev1.ConfigMap) referencedObjectSnapshot {
+func newConfigMapProjectionSnapshot(name string, items []hermesv1.HermesAgentFileProjectionItem, configMap *corev1.ConfigMap) referencedObjectSnapshot {
 	snapshot := referencedObjectSnapshot{
 		Kind:    "ConfigMap",
 		Name:    name,
@@ -702,7 +702,7 @@ func newSecretSnapshot(name string, optional bool, secret *corev1.Secret) refere
 	return snapshot
 }
 
-func newSecretProjectionSnapshot(name string, items []hermesv1alpha1.HermesAgentFileProjectionItem, secret *corev1.Secret) referencedObjectSnapshot {
+func newSecretProjectionSnapshot(name string, items []hermesv1.HermesAgentFileProjectionItem, secret *corev1.Secret) referencedObjectSnapshot {
 	snapshot := referencedObjectSnapshot{
 		Kind:    "Secret",
 		Name:    name,
@@ -767,14 +767,14 @@ func copyInt64Ptr(value *int64) *int64 {
 	return &copied
 }
 
-func desiredReplicas(agent *hermesv1alpha1.HermesAgent) int32 {
+func desiredReplicas(agent *hermesv1.HermesAgent) int32 {
 	if agent.Spec.Replicas == 0 {
 		return 1
 	}
 	return agent.Spec.Replicas
 }
 
-func statefulSetUpdateStrategy(agent *hermesv1alpha1.HermesAgent) appsv1.StatefulSetUpdateStrategy {
+func statefulSetUpdateStrategy(agent *hermesv1.HermesAgent) appsv1.StatefulSetUpdateStrategy {
 	strategyType := agent.Spec.UpdateStrategy.Type
 	if strategyType == "" {
 		strategyType = appsv1.RollingUpdateStatefulSetStrategyType
@@ -793,11 +793,11 @@ func statefulSetUpdateStrategy(agent *hermesv1alpha1.HermesAgent) appsv1.Statefu
 	}
 }
 
-func podDisruptionBudgetEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+func podDisruptionBudgetEnabled(agent *hermesv1.HermesAgent) bool {
 	return desiredReplicas(agent) > 1
 }
 
-func automountServiceAccountToken(agent *hermesv1alpha1.HermesAgent) *bool {
+func automountServiceAccountToken(agent *hermesv1.HermesAgent) *bool {
 	if agent.Spec.AutomountServiceAccountToken == nil {
 		value := false
 		return &value
@@ -845,7 +845,7 @@ func optionalValue(value *bool) bool {
 	return value != nil && *value
 }
 
-func resourceLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {
+func resourceLabels(agent *hermesv1.HermesAgent) map[string]string {
 	return map[string]string{
 		"app.kubernetes.io/name":       "k8s-operator-hermes-agent",
 		"app.kubernetes.io/managed-by": "kustomize",
@@ -853,11 +853,11 @@ func resourceLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {
 	}
 }
 
-func managedPodLabels(agent *hermesv1alpha1.HermesAgent) map[string]string {
+func managedPodLabels(agent *hermesv1.HermesAgent) map[string]string {
 	return mergeStringMaps(agent.Spec.PodLabels, resourceLabels(agent))
 }
 
-func managedPodAnnotations(agent *hermesv1alpha1.HermesAgent, inputs map[string]string) map[string]string {
+func managedPodAnnotations(agent *hermesv1.HermesAgent, inputs map[string]string) map[string]string {
 	return mergeStringMaps(agent.Spec.PodAnnotations, inputs)
 }
 
@@ -886,14 +886,14 @@ func generatedConfigMapName(resourceName, id string) string {
 	return fmt.Sprintf("%s-%s", resourceName, id)
 }
 
-func hermesImage(image hermesv1alpha1.HermesAgentImageSpec) string {
+func hermesImage(image hermesv1.HermesAgentImageSpec) string {
 	if image.Tag == "" {
 		return image.Repository
 	}
 	return fmt.Sprintf("%s:%s", image.Repository, image.Tag)
 }
 
-func hermesArgs(agent *hermesv1alpha1.HermesAgent) []string {
+func hermesArgs(agent *hermesv1.HermesAgent) []string {
 	mode := agent.Spec.Mode
 	if mode == "" {
 		mode = hermesGatewayMode
@@ -929,7 +929,7 @@ func hermesContainerSecurityContext() *corev1.SecurityContext {
 	}
 }
 
-func hermesStartupProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+func hermesStartupProbe(agent *hermesv1.HermesAgent) *corev1.Probe {
 	config := resolveProbeConfig(agent.Spec.Probes.Startup, startupProbeDefaults())
 	if !config.Enabled {
 		return nil
@@ -941,7 +941,7 @@ func hermesStartupProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
 	))
 }
 
-func hermesReadinessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+func hermesReadinessProbe(agent *hermesv1.HermesAgent) *corev1.Probe {
 	config := resolveProbeConfig(agent.Spec.Probes.Readiness, readinessProbeDefaults())
 	if !config.Enabled {
 		return nil
@@ -958,7 +958,7 @@ func hermesReadinessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
 	return buildExecProbe(config, probeCommand(checks...))
 }
 
-func hermesLivenessProbe(agent *hermesv1alpha1.HermesAgent) *corev1.Probe {
+func hermesLivenessProbe(agent *hermesv1.HermesAgent) *corev1.Probe {
 	config := resolveProbeConfig(agent.Spec.Probes.Liveness, livenessProbeDefaults())
 	if !config.Enabled {
 		return nil
@@ -990,7 +990,7 @@ type probeConfig struct {
 	FailureThreshold    int32
 }
 
-func resolveProbeConfig(spec hermesv1alpha1.HermesAgentProbeSpec, defaults probeConfig) probeConfig {
+func resolveProbeConfig(spec hermesv1.HermesAgentProbeSpec, defaults probeConfig) probeConfig {
 	config := defaults
 	if spec.Enabled != nil {
 		config.Enabled = *spec.Enabled
@@ -1084,14 +1084,14 @@ func shellQuote(value string) string {
 	return fmt.Sprintf("%q", value)
 }
 
-func effectiveTerminalBackend(agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) string {
+func effectiveTerminalBackend(agent *hermesv1.HermesAgent, referencedInputs referencedInputState) string {
 	if backend, ok := configSourceTerminalBackend(agent.Spec.Config, referencedInputs); ok {
 		return backend
 	}
 	return agent.Spec.Terminal.Backend
 }
 
-func configSourceTerminalBackend(source hermesv1alpha1.HermesAgentConfigSource, referencedInputs referencedInputState) (string, bool) {
+func configSourceTerminalBackend(source hermesv1.HermesAgentConfigSource, referencedInputs referencedInputState) (string, bool) {
 	if source.Raw != "" {
 		return terminalBackendFromConfigContent(source.Raw)
 	}
@@ -1177,7 +1177,7 @@ func networkPolicyRule(to []networkingv1.NetworkPolicyPeer, ports ...networkingv
 	return networkingv1.NetworkPolicyEgressRule{To: to, Ports: ports}
 }
 
-func networkPolicyPeers(peers []hermesv1alpha1.HermesAgentNetworkPolicyPeer) []networkingv1.NetworkPolicyPeer {
+func networkPolicyPeers(peers []hermesv1.HermesAgentNetworkPolicyPeer) []networkingv1.NetworkPolicyPeer {
 	if len(peers) == 0 {
 		return nil
 	}
@@ -1193,7 +1193,7 @@ func networkPolicyPeers(peers []hermesv1alpha1.HermesAgentNetworkPolicyPeer) []n
 	return converted
 }
 
-func networkPolicyIPBlock(peer hermesv1alpha1.HermesAgentNetworkPolicyPeer) *networkingv1.IPBlock {
+func networkPolicyIPBlock(peer hermesv1.HermesAgentNetworkPolicyPeer) *networkingv1.IPBlock {
 	if peer.CIDR == "" {
 		return nil
 	}
@@ -1223,7 +1223,7 @@ func portIntOrString(port int32) *intstr.IntOrString {
 	return &value
 }
 
-func hermesDataVolume(agent *hermesv1alpha1.HermesAgent) corev1.Volume {
+func hermesDataVolume(agent *hermesv1.HermesAgent) corev1.Volume {
 	if persistenceEnabled(agent) {
 		return corev1.Volume{
 			Name: hermesDataVolumeName,
@@ -1248,53 +1248,53 @@ func hermesTmpVolume() corev1.Volume {
 	}
 }
 
-func persistenceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+func persistenceEnabled(agent *hermesv1.HermesAgent) bool {
 	if agent.Spec.Storage.Persistence.Enabled == nil {
 		return true
 	}
 	return *agent.Spec.Storage.Persistence.Enabled
 }
 
-func networkPolicyEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+func networkPolicyEnabled(agent *hermesv1.HermesAgent) bool {
 	if agent.Spec.NetworkPolicy.Enabled == nil {
 		return false
 	}
 	return *agent.Spec.NetworkPolicy.Enabled
 }
 
-func serviceEnabled(agent *hermesv1alpha1.HermesAgent) bool {
+func serviceEnabled(agent *hermesv1.HermesAgent) bool {
 	return agent.Spec.Service.Enabled
 }
 
-func serviceType(agent *hermesv1alpha1.HermesAgent) corev1.ServiceType {
+func serviceType(agent *hermesv1.HermesAgent) corev1.ServiceType {
 	if agent.Spec.Service.Type == "" {
 		return corev1.ServiceTypeClusterIP
 	}
 	return agent.Spec.Service.Type
 }
 
-func servicePort(agent *hermesv1alpha1.HermesAgent) int32 {
+func servicePort(agent *hermesv1.HermesAgent) int32 {
 	if agent.Spec.Service.Port <= 0 {
 		return 8080
 	}
 	return agent.Spec.Service.Port
 }
 
-func serviceTargetPort(agent *hermesv1alpha1.HermesAgent) int32 {
+func serviceTargetPort(agent *hermesv1.HermesAgent) int32 {
 	if agent.Spec.Service.TargetPort <= 0 {
 		return servicePort(agent)
 	}
 	return agent.Spec.Service.TargetPort
 }
 
-func persistenceSize(agent *hermesv1alpha1.HermesAgent) string {
+func persistenceSize(agent *hermesv1.HermesAgent) string {
 	if agent.Spec.Storage.Persistence.Size == "" {
 		return "10Gi"
 	}
 	return agent.Spec.Storage.Persistence.Size
 }
 
-func persistenceAccessModes(agent *hermesv1alpha1.HermesAgent) []corev1.PersistentVolumeAccessMode {
+func persistenceAccessModes(agent *hermesv1.HermesAgent) []corev1.PersistentVolumeAccessMode {
 	if len(agent.Spec.Storage.Persistence.AccessModes) == 0 {
 		return []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce}
 	}

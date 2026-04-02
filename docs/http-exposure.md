@@ -78,8 +78,8 @@ The operator boundary stays clean:
 ## Samples
 
 The repository includes two HTTP-oriented samples:
-- `config/samples/hermes_v1alpha1_hermesagent_api_server.yaml` — supported Service-based HTTP exposure for a custom Hermes runtime image
-- `config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml` — example-only Open WebUI backend shape built on the supported Service path
+- `config/samples/hermes_v1_hermesagent_api_server.yaml` — supported Service-based HTTP exposure for a custom Hermes runtime image
+- `config/samples/hermes_v1_hermesagent_openwebui.yaml` — example-only Open WebUI backend shape built on the supported Service path
 
 Use the API server sample when you want the supported operator-owned HTTP exposure model.
 Use the Open WebUI sample only when you also manage the external Open WebUI side yourself.

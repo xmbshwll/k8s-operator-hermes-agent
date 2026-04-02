@@ -41,7 +41,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 const (
@@ -83,13 +83,13 @@ type HermesAgentReconciler struct {
 func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	if err := r.Get(ctx, req.NamespacedName, agent); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
 	if _, err := buildConfigPlan(agent); err != nil {
-		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
 		})
@@ -97,7 +97,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	referencedInputs, err := r.resolveReferencedInputs(ctx, agent)
 	if err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "read referenced inputs", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "read referenced inputs", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "ReferencedInputsReadFailed", fmt.Sprintf("Could not read referenced ConfigMaps or Secrets: %v", err), "Referenced configuration inputs could not be read")
 		})
@@ -105,7 +105,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	if missingMessages := missingReferenceMessages(referencedInputs); len(missingMessages) > 0 {
 		message := joinMessages(missingMessages)
-		return r.returnStatusFailure(ctx, agent, "missing referenced inputs", errors.New(message), func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "missing referenced inputs", errors.New(message), func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "MissingReferencedInput", message, "Referenced configuration inputs are missing")
 		})
@@ -113,21 +113,21 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	plan, err := buildConfigPlanWithReferences(agent, referencedInputs)
 	if err != nil {
-		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnStatusFailure(ctx, agent, "build config plan", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, "")
 			markConfigFailure(status, "InvalidConfig", err.Error(), "HermesAgent configuration is invalid")
 		})
 	}
 
 	if err := r.reconcileGeneratedConfigMaps(ctx, agent, plan); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile configmap", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile configmap", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markConfigFailure(status, "ConfigMapReconcileFailed", err.Error(), "Inline configuration resources could not be reconciled")
 		})
 	}
 
 	if err := r.reconcilePersistentVolumeClaim(ctx, agent); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile pvc", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile pvc", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markPersistenceFailure(status, err)
 		})
@@ -135,28 +135,28 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	inputs := buildPodTemplateInputs(agent, plan)
 	if err := r.reconcileStatefulSet(ctx, agent, inputs); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile statefulset", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile statefulset", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "StatefulSetReconcileFailed", err.Error(), "Hermes workload could not be reconciled")
 		})
 	}
 
 	if err := r.reconcileService(ctx, agent); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile service", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile service", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "ServiceReconcileFailed", err.Error(), "Hermes Service could not be reconciled")
 		})
 	}
 
 	if err := r.reconcileNetworkPolicy(ctx, agent, referencedInputs); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile networkpolicy", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile networkpolicy", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "NetworkPolicyReconcileFailed", err.Error(), "Hermes NetworkPolicy could not be reconciled")
 		})
 	}
 
 	if err := r.reconcilePodDisruptionBudget(ctx, agent); err != nil {
-		return r.returnErrorWithStatus(ctx, agent, "reconcile poddisruptionbudget", err, func(status *hermesv1alpha1.HermesAgentStatus) {
+		return r.returnErrorWithStatus(ctx, agent, "reconcile poddisruptionbudget", err, func(status *hermesv1.HermesAgentStatus) {
 			populateStatusMetadata(status, agent, plan.Hash)
 			markWorkloadFailure(status, "PodDisruptionBudgetReconcileFailed", err.Error(), "Hermes PodDisruptionBudget could not be reconciled")
 		})
@@ -180,7 +180,7 @@ func (r *HermesAgentReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 // SetupWithManager sets up the controller with the Manager.
 func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&hermesv1alpha1.HermesAgent{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		For(&hermesv1.HermesAgent{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
 		Owns(&corev1.Service{}).
@@ -193,7 +193,7 @@ func (r *HermesAgentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, agent *hermesv1alpha1.HermesAgent) (referencedInputState, error) {
+func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, agent *hermesv1.HermesAgent) (referencedInputState, error) {
 	referencedInputs := referencedInputState{}
 
 	if err := r.appendConfigFileSnapshots(ctx, agent.Namespace, &referencedInputs, agent.Spec.Config, agent.Spec.GatewayConfig); err != nil {
@@ -215,7 +215,7 @@ func (r *HermesAgentReconciler) resolveReferencedInputs(ctx context.Context, age
 	return referencedInputs, nil
 }
 
-func (r *HermesAgentReconciler) appendConfigFileSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, sources ...hermesv1alpha1.HermesAgentConfigSource) error {
+func (r *HermesAgentReconciler) appendConfigFileSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, sources ...hermesv1.HermesAgentConfigSource) error {
 	for _, source := range sources {
 		if source.ConfigMapRef != nil && source.ConfigMapRef.Name != "" {
 			configMap, err := r.getConfigMapForReference(ctx, namespace, source.ConfigMapRef.Name)
@@ -235,7 +235,7 @@ func (r *HermesAgentReconciler) appendConfigFileSnapshots(ctx context.Context, n
 	return nil
 }
 
-func (r *HermesAgentReconciler) appendFileMountSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, fileMounts []hermesv1alpha1.HermesAgentFileMountSpec) error {
+func (r *HermesAgentReconciler) appendFileMountSnapshots(ctx context.Context, namespace string, referencedInputs *referencedInputState, fileMounts []hermesv1.HermesAgentFileMountSpec) error {
 	for _, fileMount := range fileMounts {
 		if fileMount.ConfigMapRef != nil && fileMount.ConfigMapRef.Name != "" {
 			configMap, err := r.getConfigMapForReference(ctx, namespace, fileMount.ConfigMapRef.Name)
@@ -336,19 +336,19 @@ func (r *HermesAgentReconciler) getSecretForReference(ctx context.Context, names
 }
 
 func (r *HermesAgentReconciler) findAgentsForConfigMap(ctx context.Context, obj client.Object) []ctrl.Request {
-	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1alpha1.HermesAgent) bool {
+	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1.HermesAgent) bool {
 		return referencesConfigMap(agent, obj.GetName())
 	})
 }
 
 func (r *HermesAgentReconciler) findAgentsForSecret(ctx context.Context, obj client.Object) []ctrl.Request {
-	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1alpha1.HermesAgent) bool {
+	return r.findReferencingAgents(ctx, obj.GetNamespace(), func(agent *hermesv1.HermesAgent) bool {
 		return referencesSecret(agent, obj.GetName())
 	})
 }
 
-func (r *HermesAgentReconciler) findReferencingAgents(ctx context.Context, namespace string, matches func(*hermesv1alpha1.HermesAgent) bool) []ctrl.Request {
-	agentList := &hermesv1alpha1.HermesAgentList{}
+func (r *HermesAgentReconciler) findReferencingAgents(ctx context.Context, namespace string, matches func(*hermesv1.HermesAgent) bool) []ctrl.Request {
+	agentList := &hermesv1.HermesAgentList{}
 	if err := r.List(ctx, agentList, client.InNamespace(namespace)); err != nil {
 		return nil
 	}
@@ -364,7 +364,7 @@ func (r *HermesAgentReconciler) findReferencingAgents(ctx context.Context, names
 	return requests
 }
 
-func referencesConfigMap(agent *hermesv1alpha1.HermesAgent, name string) bool {
+func referencesConfigMap(agent *hermesv1.HermesAgent, name string) bool {
 	if name == "" {
 		return false
 	}
@@ -389,7 +389,7 @@ func referencesConfigMap(agent *hermesv1alpha1.HermesAgent, name string) bool {
 	return false
 }
 
-func referencesSecret(agent *hermesv1alpha1.HermesAgent, name string) bool {
+func referencesSecret(agent *hermesv1.HermesAgent, name string) bool {
 	if name == "" {
 		return false
 	}
@@ -419,15 +419,15 @@ func referencesSecret(agent *hermesv1alpha1.HermesAgent, name string) bool {
 	return false
 }
 
-func configSourceReferencesConfigMap(source hermesv1alpha1.HermesAgentConfigSource, name string) bool {
+func configSourceReferencesConfigMap(source hermesv1.HermesAgentConfigSource, name string) bool {
 	return source.ConfigMapRef != nil && source.ConfigMapRef.Name == name
 }
 
-func configSourceReferencesSecret(source hermesv1alpha1.HermesAgentConfigSource, name string) bool {
+func configSourceReferencesSecret(source hermesv1.HermesAgentConfigSource, name string) bool {
 	return source.SecretRef != nil && source.SecretRef.Name == name
 }
 
-func (r *HermesAgentReconciler) reconcileGeneratedConfigMaps(ctx context.Context, agent *hermesv1alpha1.HermesAgent, plan configPlan) error {
+func (r *HermesAgentReconciler) reconcileGeneratedConfigMaps(ctx context.Context, agent *hermesv1.HermesAgent, plan configPlan) error {
 	desiredGeneratedConfigMaps := map[string]struct{}{}
 	for _, file := range plan.Files {
 		if !file.Generated {
@@ -441,7 +441,7 @@ func (r *HermesAgentReconciler) reconcileGeneratedConfigMaps(ctx context.Context
 	return r.cleanupStaleGeneratedConfigMaps(ctx, agent, desiredGeneratedConfigMaps)
 }
 
-func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, agent *hermesv1alpha1.HermesAgent, file resolvedConfigFile) error {
+func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, agent *hermesv1.HermesAgent, file resolvedConfigFile) error {
 	configMap := &corev1.ConfigMap{}
 	configMap.Namespace = agent.Namespace
 	configMap.Name = file.ConfigMapName
@@ -454,7 +454,7 @@ func (r *HermesAgentReconciler) reconcileInlineConfigMap(ctx context.Context, ag
 	return err
 }
 
-func (r *HermesAgentReconciler) cleanupStaleGeneratedConfigMaps(ctx context.Context, agent *hermesv1alpha1.HermesAgent, desired map[string]struct{}) error {
+func (r *HermesAgentReconciler) cleanupStaleGeneratedConfigMaps(ctx context.Context, agent *hermesv1.HermesAgent, desired map[string]struct{}) error {
 	statefulSet := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}, statefulSet); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -499,7 +499,7 @@ func statefulSetReadyForGeneratedConfigCleanup(statefulSet *appsv1.StatefulSet) 
 	return statefulSet.Status.ReadyReplicas >= desiredReplicas && statefulSet.Status.ObservedGeneration >= statefulSet.Generation
 }
 
-func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+func (r *HermesAgentReconciler) reconcilePersistentVolumeClaim(ctx context.Context, agent *hermesv1.HermesAgent) error {
 	if !persistenceEnabled(agent) {
 		return nil
 	}
@@ -542,7 +542,7 @@ type persistentVolumeClaimSpecDriftError struct {
 	remediation string
 }
 
-func newPersistentVolumeClaimSpecDriftError(agent *hermesv1alpha1.HermesAgent, pvcName string, fields []string) *persistentVolumeClaimSpecDriftError {
+func newPersistentVolumeClaimSpecDriftError(agent *hermesv1.HermesAgent, pvcName string, fields []string) *persistentVolumeClaimSpecDriftError {
 	copiedFields := append([]string{}, fields...)
 	return &persistentVolumeClaimSpecDriftError{
 		name:        pvcName,
@@ -555,11 +555,11 @@ func (e *persistentVolumeClaimSpecDriftError) Error() string {
 	return fmt.Sprintf("PersistentVolumeClaim %s must be recreated to apply immutable storage changes: %s. %s", e.name, strings.Join(e.fields, ", "), e.remediation)
 }
 
-func persistentVolumeClaimDriftRemediation(agent *hermesv1alpha1.HermesAgent, pvcName string) string {
+func persistentVolumeClaimDriftRemediation(agent *hermesv1.HermesAgent, pvcName string) string {
 	return fmt.Sprintf("Supported remediation: create a new HermesAgent with a different name for a fresh PVC, or back up Hermes state, delete PersistentVolumeClaim %s, and re-apply HermesAgent %s", pvcName, agent.Name)
 }
 
-func persistentVolumeClaimImmutableFieldDrift(agent *hermesv1alpha1.HermesAgent, existing, desired corev1.PersistentVolumeClaimSpec) []string {
+func persistentVolumeClaimImmutableFieldDrift(agent *hermesv1.HermesAgent, existing, desired corev1.PersistentVolumeClaimSpec) []string {
 	var drift []string
 	if !equalPersistentVolumeAccessModes(existing.AccessModes, desired.AccessModes) {
 		drift = append(drift, "spec.storage.persistence.accessModes")
@@ -588,7 +588,7 @@ func equalOptionalString(left, right *string) bool {
 	return *left == *right
 }
 
-func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent *hermesv1alpha1.HermesAgent, inputs podTemplateInputs) error {
+func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent *hermesv1.HermesAgent, inputs podTemplateInputs) error {
 	statefulSet := &appsv1.StatefulSet{}
 	statefulSet.Namespace = agent.Namespace
 	statefulSet.Name = agent.Name
@@ -602,7 +602,7 @@ func (r *HermesAgentReconciler) reconcileStatefulSet(ctx context.Context, agent 
 	return err
 }
 
-func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context, agent *hermesv1.HermesAgent) error {
 	podDisruptionBudget := &policyv1.PodDisruptionBudget{}
 	podDisruptionBudget.Namespace = agent.Namespace
 	podDisruptionBudget.Name = agent.Name
@@ -634,7 +634,7 @@ func (r *HermesAgentReconciler) reconcilePodDisruptionBudget(ctx context.Context
 	return err
 }
 
-func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *hermesv1alpha1.HermesAgent) error {
+func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *hermesv1.HermesAgent) error {
 	service := &corev1.Service{}
 	serviceKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
 	serviceExists := true
@@ -675,7 +675,7 @@ func (r *HermesAgentReconciler) reconcileService(ctx context.Context, agent *her
 	return err
 }
 
-func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *hermesv1alpha1.HermesAgent, referencedInputs referencedInputState) error {
+func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agent *hermesv1.HermesAgent, referencedInputs referencedInputState) error {
 	networkPolicy := &networkingv1.NetworkPolicy{}
 	networkPolicyKey := client.ObjectKey{Name: agent.Name, Namespace: agent.Namespace}
 	networkPolicyExists := true
@@ -709,29 +709,29 @@ func (r *HermesAgentReconciler) reconcileNetworkPolicy(ctx context.Context, agen
 	return err
 }
 
-func (r *HermesAgentReconciler) returnStatusFailure(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) (ctrl.Result, error) {
+func (r *HermesAgentReconciler) returnStatusFailure(ctx context.Context, agent *hermesv1.HermesAgent, operation string, cause error, mutate func(*hermesv1.HermesAgentStatus)) (ctrl.Result, error) {
 	if err := r.patchFailureStatus(ctx, agent, operation, cause, mutate); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
 
-func (r *HermesAgentReconciler) returnErrorWithStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) (ctrl.Result, error) {
+func (r *HermesAgentReconciler) returnErrorWithStatus(ctx context.Context, agent *hermesv1.HermesAgent, operation string, cause error, mutate func(*hermesv1.HermesAgentStatus)) (ctrl.Result, error) {
 	if err := r.patchFailureStatus(ctx, agent, operation, cause, mutate); err != nil {
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, cause
 }
 
-func (r *HermesAgentReconciler) patchFailureStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, operation string, cause error, mutate func(*hermesv1alpha1.HermesAgentStatus)) error {
+func (r *HermesAgentReconciler) patchFailureStatus(ctx context.Context, agent *hermesv1.HermesAgent, operation string, cause error, mutate func(*hermesv1.HermesAgentStatus)) error {
 	if err := r.patchStatus(ctx, agent, mutate); err != nil {
 		return fmt.Errorf("%s: %w (status update failed: %v)", operation, cause, err)
 	}
 	return nil
 }
 
-func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, mutate func(*hermesv1alpha1.HermesAgentStatus)) error {
-	latest := &hermesv1alpha1.HermesAgent{}
+func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1.HermesAgent, mutate func(*hermesv1.HermesAgentStatus)) error {
+	latest := &hermesv1.HermesAgent{}
 	if err := r.Get(ctx, client.ObjectKeyFromObject(agent), latest); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -757,7 +757,7 @@ func (r *HermesAgentReconciler) patchStatus(ctx context.Context, agent *hermesv1
 	return nil
 }
 
-func (r *HermesAgentReconciler) emitStatusEvent(agent *hermesv1alpha1.HermesAgent, before, after *hermesv1alpha1.HermesAgentStatus) {
+func (r *HermesAgentReconciler) emitStatusEvent(agent *hermesv1.HermesAgent, before, after *hermesv1.HermesAgentStatus) {
 	if r.Recorder == nil {
 		return
 	}
@@ -767,7 +767,7 @@ func (r *HermesAgentReconciler) emitStatusEvent(agent *hermesv1alpha1.HermesAgen
 	}
 }
 
-func statusEventsForTransition(before, after *hermesv1alpha1.HermesAgentStatus) []statusEvent {
+func statusEventsForTransition(before, after *hermesv1.HermesAgentStatus) []statusEvent {
 	events := []statusEvent{}
 	persistenceChanged := false
 	if event := eventForConditionTransition(before, after, conditionTypeConfigReady); event.ok && event.eventType == corev1.EventTypeWarning {
@@ -792,7 +792,7 @@ type statusEvent struct {
 	ok        bool
 }
 
-func eventForConditionTransition(before, after *hermesv1alpha1.HermesAgentStatus, conditionType string) statusEvent {
+func eventForConditionTransition(before, after *hermesv1.HermesAgentStatus, conditionType string) statusEvent {
 	beforeCondition := api.FindStatusCondition(before.Conditions, conditionType)
 	afterCondition := api.FindStatusCondition(after.Conditions, conditionType)
 	if afterCondition == nil {
@@ -865,13 +865,13 @@ func joinMessages(messages []string) string {
 	return strings.Join(messages, "; ")
 }
 
-func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1alpha1.HermesAgent, configHash string) error {
+func (r *HermesAgentReconciler) reconcileStatus(ctx context.Context, agent *hermesv1.HermesAgent, configHash string) error {
 	statusView, err := r.readStatusView(ctx, agent)
 	if err != nil {
 		return err
 	}
 
-	return r.patchStatus(ctx, agent, func(status *hermesv1alpha1.HermesAgentStatus) {
+	return r.patchStatus(ctx, agent, func(status *hermesv1.HermesAgentStatus) {
 		populateStatusMetadata(status, agent, configHash)
 		status.ReadyReplicas = statusView.readyReplicas
 		status.PersistenceBound = statusView.persistenceBound
@@ -898,7 +898,7 @@ type statusView struct {
 	phase                      string
 }
 
-func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *hermesv1alpha1.HermesAgent) (statusView, error) {
+func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *hermesv1.HermesAgent) (statusView, error) {
 	view := statusView{}
 
 	if persistenceEnabled(agent) {
@@ -996,7 +996,7 @@ func (r *HermesAgentReconciler) readStatusView(ctx context.Context, agent *herme
 	return view, nil
 }
 
-func populateStatusMetadata(status *hermesv1alpha1.HermesAgentStatus, agent *hermesv1alpha1.HermesAgent, configHash string) {
+func populateStatusMetadata(status *hermesv1.HermesAgentStatus, agent *hermesv1.HermesAgent, configHash string) {
 	status.Image = hermesImage(agent.Spec.Image)
 	status.ConfigHash = configHash
 	if persistenceEnabled(agent) {
@@ -1013,7 +1013,7 @@ func populateStatusMetadata(status *hermesv1alpha1.HermesAgentStatus, agent *her
 	}
 }
 
-func setCondition(status *hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason, message string) {
+func setCondition(status *hermesv1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason, message string) {
 	api.SetStatusCondition(&status.Conditions, metav1.Condition{
 		Type:               conditionType,
 		Status:             conditionStatus,
@@ -1024,7 +1024,7 @@ func setCondition(status *hermesv1alpha1.HermesAgentStatus, conditionType string
 	})
 }
 
-func markConfigFailure(status *hermesv1alpha1.HermesAgentStatus, reason, configMessage, readyMessage string) {
+func markConfigFailure(status *hermesv1.HermesAgentStatus, reason, configMessage, readyMessage string) {
 	status.ReadyReplicas = 0
 	status.PersistenceBound = false
 	setCondition(status, conditionTypeConfigReady, metav1.ConditionFalse, reason, configMessage)
@@ -1034,7 +1034,7 @@ func markConfigFailure(status *hermesv1alpha1.HermesAgentStatus, reason, configM
 	status.Phase = phaseConfigError
 }
 
-func markPersistenceFailure(status *hermesv1alpha1.HermesAgentStatus, err error) {
+func markPersistenceFailure(status *hermesv1.HermesAgentStatus, err error) {
 	status.ReadyReplicas = 0
 	status.PersistenceBound = false
 	setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
@@ -1056,7 +1056,7 @@ func markPersistenceFailure(status *hermesv1alpha1.HermesAgentStatus, err error)
 	status.Phase = phaseStorageError
 }
 
-func markWorkloadFailure(status *hermesv1alpha1.HermesAgentStatus, reason, workloadMessage, readyMessage string) {
+func markWorkloadFailure(status *hermesv1.HermesAgentStatus, reason, workloadMessage, readyMessage string) {
 	status.ReadyReplicas = 0
 	setCondition(status, conditionTypeConfigReady, metav1.ConditionTrue, "ConfigReconciled", "Configuration inputs resolved successfully")
 	setCondition(status, conditionTypeWorkloadReady, metav1.ConditionFalse, reason, workloadMessage)

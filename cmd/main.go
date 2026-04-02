@@ -35,9 +35,9 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 	"github.com/xmbshwll/k8s-operator-hermes-agent/internal/controller"
-	webhookv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/internal/webhook/v1alpha1"
+	webhookv1 "github.com/xmbshwll/k8s-operator-hermes-agent/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -64,7 +64,7 @@ type managerConfig struct {
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(hermesv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(hermesv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -261,7 +261,7 @@ func setupWebhooks(mgr ctrl.Manager, enableWebhooks bool) error {
 	if !enableWebhooks {
 		return nil
 	}
-	return webhookv1alpha1.SetupHermesAgentWebhookWithManager(mgr)
+	return webhookv1.SetupHermesAgentWebhookWithManager(mgr)
 }
 
 func addHealthChecks(mgr ctrl.Manager) error {

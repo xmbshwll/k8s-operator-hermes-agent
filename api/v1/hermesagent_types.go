@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
 import (
 	appsv1 "k8s.io/api/apps/v1"
@@ -428,8 +428,8 @@ type HermesAgentStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// +kubebuilder:deprecatedversion
 // +kubebuilder:object:root=true
+// +kubebuilder:storageversion
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:scope=Namespaced,shortName=ha
 // +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=".status.phase"

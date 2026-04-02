@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 const (
@@ -128,7 +128,7 @@ func requireExecProbeExcludes(t *testing.T, probe *corev1.Probe, commandParts ..
 	}
 }
 
-func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason string) {
+func requireStatusCondition(t *testing.T, status hermesv1.HermesAgentStatus, conditionType string, conditionStatus metav1.ConditionStatus, reason string) {
 	t.Helper()
 
 	for _, condition := range status.Conditions {
@@ -150,7 +150,7 @@ func requireStatusCondition(t *testing.T, status hermesv1alpha1.HermesAgentStatu
 	t.Fatalf("expected condition %s", conditionType)
 }
 
-func requireConditionObservedGeneration(t *testing.T, status hermesv1alpha1.HermesAgentStatus, conditionType string, generation int64) {
+func requireConditionObservedGeneration(t *testing.T, status hermesv1.HermesAgentStatus, conditionType string, generation int64) {
 	t.Helper()
 
 	for _, condition := range status.Conditions {
@@ -204,7 +204,7 @@ func requireNetworkPolicyCIDRPeer(t *testing.T, peers []networkingv1.NetworkPoli
 }
 
 func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.Raw = testInlineConfig
 	agent.Spec.GatewayConfig.Raw = "{}\n"
@@ -228,7 +228,7 @@ func TestBuildConfigPlanWithInlineConfig(t *testing.T) {
 }
 
 func TestBuildConfigPlanWithSecretBackedConfig(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
@@ -251,7 +251,7 @@ func TestBuildConfigPlanWithSecretBackedConfig(t *testing.T) {
 }
 
 func TestBuildPodTemplateInputsUsesSecretVolumeForSecretBackedConfig(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
@@ -275,7 +275,7 @@ func TestBuildPodTemplateInputsUsesSecretVolumeForSecretBackedConfig(t *testing.
 }
 
 func TestBuildConfigPlanRejectsMixedSource(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.Raw = testInlineConfig
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
@@ -290,9 +290,9 @@ func TestBuildConfigPlanRejectsMixedSource(t *testing.T) {
 
 func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
 	invalidMode := int32(0o1000)
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
-	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+	agent.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "plugins"},
 		SecretRef:    &corev1.LocalObjectReference{Name: "ssh-auth"},
@@ -300,7 +300,7 @@ func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
 		MountPath:   "/var/run/hermes/ssh",
 		SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
 		DefaultMode: &invalidMode,
-		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+		Items: []hermesv1.HermesAgentFileProjectionItem{{
 			Key:  "id_ed25519",
 			Path: "../id_ed25519",
 		}},
@@ -314,7 +314,7 @@ func TestBuildConfigPlanRejectsInvalidFileMounts(t *testing.T) {
 func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) {
 	defaultMode := int32(0o444)
 	privateKeyMode := int32(0o600)
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
@@ -324,10 +324,10 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) 
 		SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "provider-env"}},
 	}}
 	agent.Spec.SecretRefs = []corev1.LocalObjectReference{{Name: "hermes-secrets"}}
-	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+	agent.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
-		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+		Items: []hermesv1.HermesAgentFileProjectionItem{{
 			Key:  "plugin.py",
 			Path: "bundle/plugin.py",
 		}},
@@ -335,7 +335,7 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) 
 		MountPath:   "/var/run/hermes/ssh",
 		SecretRef:   &corev1.LocalObjectReference{Name: "ssh-auth"},
 		DefaultMode: &defaultMode,
-		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+		Items: []hermesv1.HermesAgentFileProjectionItem{{
 			Key:  "id_ed25519",
 			Path: "id_ed25519",
 			Mode: &privateKeyMode,
@@ -386,7 +386,7 @@ func TestBuildPodTemplateInputsIncludesConfigHashAndMountedInputs(t *testing.T) 
 }
 
 func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
-	base := &hermesv1alpha1.HermesAgent{}
+	base := &hermesv1.HermesAgent{}
 	base.Name = testAgentName
 	base.Spec.Config.Raw = testInlineConfig
 
@@ -407,7 +407,7 @@ func TestConfigHashChangesWhenConfigChanges(t *testing.T) {
 }
 
 func TestConfigHashChangesWhenReferencedConfigMapContentChanges(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
@@ -432,7 +432,7 @@ func TestConfigHashChangesWhenReferencedConfigMapContentChanges(t *testing.T) {
 }
 
 func TestConfigHashChangesWhenReferencedSecretBackedConfigChanges(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
@@ -457,7 +457,7 @@ func TestConfigHashChangesWhenReferencedSecretBackedConfigChanges(t *testing.T) 
 }
 
 func TestConfigHashChangesWhenReferencedSecretContentChanges(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Env = []corev1.EnvVar{{
 		Name: "API_TOKEN",
@@ -495,9 +495,9 @@ func TestConfigHashChangesWhenReferencedSecretContentChanges(t *testing.T) {
 }
 
 func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
-	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+	agent.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
 	}, {
@@ -529,12 +529,12 @@ func TestConfigHashChangesWhenFileMountContentChanges(t *testing.T) {
 }
 
 func TestConfigHashIgnoresUnselectedFileMountKeys(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
-	agent.Spec.FileMounts = []hermesv1alpha1.HermesAgentFileMountSpec{{
+	agent.Spec.FileMounts = []hermesv1.HermesAgentFileMountSpec{{
 		MountPath:    "/var/run/hermes/plugins",
 		ConfigMapRef: &corev1.LocalObjectReference{Name: "hermes-plugins"},
-		Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+		Items: []hermesv1.HermesAgentFileProjectionItem{{
 			Key:  "plugin.py",
 			Path: "plugin.py",
 		}},
@@ -562,7 +562,7 @@ func TestConfigHashIgnoresUnselectedFileMountKeys(t *testing.T) {
 }
 
 func TestBuildStatefulSetIncludesConfigHashAnnotation(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.Raw = testInlineConfig
 
@@ -578,7 +578,7 @@ func TestBuildStatefulSetIncludesConfigHashAnnotation(t *testing.T) {
 }
 
 func TestBuildStatefulSetUpdatesPodTemplateAnnotationWhenConfigChanges(t *testing.T) {
-	base := &hermesv1alpha1.HermesAgent{}
+	base := &hermesv1.HermesAgent{}
 	base.Name = testAgentName
 	base.Spec.Config.Raw = testInlineConfig
 
@@ -602,7 +602,7 @@ func TestBuildStatefulSetUpdatesPodTemplateAnnotationWhenConfigChanges(t *testin
 }
 
 func TestBuildPersistentVolumeClaimUsesStorageSpec(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Storage.Persistence.Size = testPersistentVolumeSize
@@ -629,7 +629,7 @@ func TestBuildPersistentVolumeClaimUsesStorageSpec(t *testing.T) {
 }
 
 func TestBuildServiceUsesDefaults(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 
@@ -664,7 +664,7 @@ func TestBuildServiceUsesDefaults(t *testing.T) {
 }
 
 func TestBuildPodDisruptionBudgetUsesDefaultMaxUnavailable(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Replicas = 3
@@ -688,7 +688,7 @@ func TestBuildPodDisruptionBudgetUsesDefaultMaxUnavailable(t *testing.T) {
 }
 
 func TestBuildServiceUsesExplicitSpec(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Service.Type = corev1.ServiceTypeNodePort
@@ -712,7 +712,7 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 }
 
 func TestNetworkPolicyEnabledDefaultsToFalse(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	if networkPolicyEnabled(agent) {
 		t.Fatal("expected NetworkPolicy to default to disabled")
 	}
@@ -725,7 +725,7 @@ func TestNetworkPolicyEnabledDefaultsToFalse(t *testing.T) {
 }
 
 func TestBuildNetworkPolicyUsesEgressOnlyDefaults(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 
@@ -765,11 +765,11 @@ func TestBuildNetworkPolicyUsesEgressOnlyDefaults(t *testing.T) {
 }
 
 func TestBuildNetworkPolicyUsesDestinationAwarePeersWhenConfigured(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Terminal.Backend = terminalBackendSSH
-	agent.Spec.NetworkPolicy.Destinations = []hermesv1alpha1.HermesAgentNetworkPolicyPeer{{
+	agent.Spec.NetworkPolicy.Destinations = []hermesv1.HermesAgentNetworkPolicyPeer{{
 		CIDR:   "203.0.113.0/24",
 		Except: []string{"203.0.113.128/25"},
 	}, {
@@ -802,7 +802,7 @@ func TestBuildNetworkPolicyUsesDestinationAwarePeersWhenConfigured(t *testing.T)
 }
 
 func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Terminal.Backend = terminalBackendSSH
@@ -820,7 +820,7 @@ func TestBuildNetworkPolicyAllowsSSHWhenTerminalBackendSSH(t *testing.T) {
 }
 
 func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Namespace = testNamespace
 	agent.Spec.Terminal.Backend = terminalBackendSSH
@@ -847,7 +847,7 @@ func TestBuildNetworkPolicyAddsConfiguredAdditionalPorts(t *testing.T) {
 }
 
 func TestEffectiveTerminalBackendUsesInlineConfigOverSpec(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n"
 
@@ -858,7 +858,7 @@ func TestEffectiveTerminalBackendUsesInlineConfigOverSpec(t *testing.T) {
 }
 
 func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.ConfigMapRef = &corev1.ConfigMapKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
@@ -877,7 +877,7 @@ func TestEffectiveTerminalBackendUsesReferencedConfigOverSpec(t *testing.T) {
 }
 
 func TestEffectiveTerminalBackendUsesReferencedSecretConfigOverSpec(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Spec.Terminal.Backend = terminalBackendLocal
 	agent.Spec.Config.SecretRef = &corev1.SecretKeySelector{
 		LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config-secret"},
@@ -896,7 +896,7 @@ func TestEffectiveTerminalBackendUsesReferencedSecretConfigOverSpec(t *testing.T
 }
 
 func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Spec.Terminal.Backend = terminalBackendSSH
 	agent.Spec.Config.Raw = "model: anthropic/claude-opus-4.1\n"
 
@@ -907,7 +907,7 @@ func TestEffectiveTerminalBackendFallsBackToSpecWhenConfigOmitsBackend(t *testin
 }
 
 func TestEffectiveTerminalBackendIsEmptyWhenNoConfigOrFallbackDeclaresBackend(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 
 	backend := effectiveTerminalBackend(agent, referencedInputState{})
 	if backend != "" {
@@ -936,7 +936,7 @@ func TestNetworkPolicyPortsUsesRequestedProtocol(t *testing.T) {
 }
 
 func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Config.Raw = testInlineConfig
 
@@ -970,7 +970,7 @@ func TestBuildStatefulSetMountsPersistentDataVolume(t *testing.T) {
 }
 
 func TestBuildStatefulSetConfiguresHermesProbes(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Probes.RequireConnectedPlatform = true
 
@@ -1012,7 +1012,7 @@ func TestBuildStatefulSetConfiguresHermesProbes(t *testing.T) {
 }
 
 func TestBuildStatefulSetReadinessWithoutConnectedPlatformStillRequiresRunningGateway(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 
 	plan, err := buildConfigPlan(agent)
@@ -1030,7 +1030,7 @@ func TestBuildStatefulSetReadinessWithoutConnectedPlatformStillRequiresRunningGa
 }
 
 func TestBuildStatefulSetOmitsDisabledProbes(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	disabled := false
 	agent.Spec.Probes.Startup.Enabled = &disabled
@@ -1056,7 +1056,7 @@ func TestBuildStatefulSetOmitsDisabledProbes(t *testing.T) {
 }
 
 func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Mode = "gateway"
 	agent.Spec.Image.Repository = "ghcr.io/example/hermes-agent"
@@ -1124,7 +1124,7 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 }
 
 func TestBuildStatefulSetPreservesTerminationGracePeriodSeconds(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	terminationGracePeriodSeconds := int64(120)
 	agent.Spec.TerminationGracePeriodSeconds = &terminationGracePeriodSeconds
@@ -1141,12 +1141,12 @@ func TestBuildStatefulSetPreservesTerminationGracePeriodSeconds(t *testing.T) {
 }
 
 func TestBuildStatefulSetUsesExplicitReplicasAndUpdateStrategy(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Replicas = 3
 	agent.Spec.UpdateStrategy.Type = appsv1.RollingUpdateStatefulSetStrategyType
 	partition := int32(2)
-	agent.Spec.UpdateStrategy.RollingUpdate = &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{Partition: &partition}
+	agent.Spec.UpdateStrategy.RollingUpdate = &hermesv1.HermesAgentRollingUpdateStrategySpec{Partition: &partition}
 
 	plan, err := buildConfigPlan(agent)
 	if err != nil {
@@ -1166,7 +1166,7 @@ func TestBuildStatefulSetUsesExplicitReplicasAndUpdateStrategy(t *testing.T) {
 }
 
 func TestBuildStatefulSetUsesOnDeleteUpdateStrategy(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.UpdateStrategy.Type = appsv1.OnDeleteStatefulSetStrategyType
 
@@ -1185,7 +1185,7 @@ func TestBuildStatefulSetUsesOnDeleteUpdateStrategy(t *testing.T) {
 }
 
 func TestBuildStatefulSetUsesServiceTargetPortForContainerPort(t *testing.T) {
-	agent := &hermesv1alpha1.HermesAgent{}
+	agent := &hermesv1.HermesAgent{}
 	agent.Name = testAgentName
 	agent.Spec.Service.Enabled = true
 	agent.Spec.Service.Port = 80
@@ -1206,7 +1206,7 @@ func TestBuildStatefulSetUsesServiceTargetPortForContainerPort(t *testing.T) {
 }
 
 func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.T) {
-	testAgent := &hermesv1alpha1.HermesAgent{}
+	testAgent := &hermesv1.HermesAgent{}
 	testAgent.Name = testAgentName
 	testAgent.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-auth"}}
 	testAgent.Spec.PodLabels = map[string]string{"sidecar.istio.io/inject": "false", "app.kubernetes.io/name": "should-not-override"}

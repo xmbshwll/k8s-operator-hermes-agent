@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 func requireRecordedEvent(t *testing.T, recorder *record.FakeRecorder, want ...string) string {
@@ -39,13 +39,13 @@ func requireRecordedEvent(t *testing.T, recorder *record.FakeRecorder, want ...s
 	}
 }
 
-func ownedByAgentReference(agent *hermesv1alpha1.HermesAgent) metav1.OwnerReference {
-	return *metav1.NewControllerRef(agent, hermesv1alpha1.GroupVersion.WithKind("HermesAgent"))
+func ownedByAgentReference(agent *hermesv1.HermesAgent) metav1.OwnerReference {
+	return *metav1.NewControllerRef(agent, hermesv1.GroupVersion.WithKind("HermesAgent"))
 }
 
 func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -61,21 +61,21 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -95,7 +95,7 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 		t.Fatal("expected initial StatefulSet pod template annotation to include config hash")
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestReconcileUpdatesStatefulSetConfigHashAnnotation(t *testing.T) {
 
 func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -155,15 +155,15 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 		ObjectMeta: metav1.ObjectMeta{Name: "ssh-auth", Namespace: testNamespace},
 		Data:       map[string][]byte{"id_ed25519": []byte("first")},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
+			Config: hermesv1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: configSecret.Name},
 				Key:                  "config.yaml",
 			}},
@@ -185,7 +185,7 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, configSecret, providerSecret, providerSecretKey, sshSecret).
 		Build()
 
@@ -240,7 +240,7 @@ func TestReconcileUpdatesStatefulSetConfigHashWhenReferencedInputsChange(t *test
 
 func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -260,11 +260,11 @@ func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
 		Data:       map[string]string{"config.yaml": testInlineConfig},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-stale-configmaps"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: externalConfigMap.Name},
 				Key:                  "config.yaml",
 			}},
@@ -298,7 +298,7 @@ func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testin
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, externalConfigMap, staleConfigMap, staleGatewayConfigMap, statefulSet).
 		Build()
 
@@ -318,7 +318,7 @@ func TestReconcileDeletesStaleGeneratedConfigMapsWhenSourceModeChanges(t *testin
 
 func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -338,12 +338,12 @@ func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testin
 		ObjectMeta: metav1.ObjectMeta{Name: "shared-gateway-config", Namespace: testNamespace},
 		Data:       map[string]string{"gateway.json": "{}\n"},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-keep-active-generated"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			GatewayConfig: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+		Spec: hermesv1.HermesAgentSpec{
+			Image:  hermesv1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			GatewayConfig: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: externalGatewayConfigMap.Name},
 				Key:                  "gateway.json",
 			}},
@@ -369,7 +369,7 @@ func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testin
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, externalGatewayConfigMap, staleGatewayConfigMap, statefulSet).
 		Build()
 
@@ -395,17 +395,17 @@ func TestReconcileKeepsActiveGeneratedConfigMapsWhileDeletingStaleOnes(t *testin
 
 func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
 	}
 
-	referencingAgent := &hermesv1alpha1.HermesAgent{
+	referencingAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "references-configmap", Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+		Spec: hermesv1.HermesAgentSpec{
+			Config: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 				Key:                  "config.yaml",
 			}},
@@ -420,22 +420,22 @@ func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
 			}},
 		},
 	}
-	fileMountAgent := &hermesv1alpha1.HermesAgent{
+	fileMountAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "mounts-configmap", Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+		Spec: hermesv1.HermesAgentSpec{
+			FileMounts: []hermesv1.HermesAgentFileMountSpec{{
 				MountPath:    "/var/run/hermes/plugins",
 				ConfigMapRef: &corev1.LocalObjectReference{Name: "shared-config"},
 			}},
 		},
 	}
-	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
+	nonReferencingAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-configmap", Namespace: testNamespace},
 	}
-	otherNamespaceAgent := &hermesv1alpha1.HermesAgent{
+	otherNamespaceAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "other-namespace", Namespace: "other"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+		Spec: hermesv1.HermesAgentSpec{
+			Config: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
 				Key:                  "config.yaml",
 			}},
@@ -466,17 +466,17 @@ func TestFindAgentsForConfigMapReturnsReferencingAgents(t *testing.T) {
 
 func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(CoreV1) returned error: %v", err)
 	}
 
-	referencingAgent := &hermesv1alpha1.HermesAgent{
+	referencingAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "references-secret", Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Config: hermesv1alpha1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
+		Spec: hermesv1.HermesAgentSpec{
+			Config: hermesv1.HermesAgentConfigSource{SecretRef: &corev1.SecretKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "shared-secret"},
 				Key:                  "config.yaml",
 			}},
@@ -493,18 +493,18 @@ func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 			SecretRefs: []corev1.LocalObjectReference{{Name: "shared-secret"}},
 		},
 	}
-	fileMountAgent := &hermesv1alpha1.HermesAgent{
+	fileMountAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "mounts-secret", Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+		Spec: hermesv1.HermesAgentSpec{
+			FileMounts: []hermesv1.HermesAgentFileMountSpec{{
 				MountPath: "/var/run/hermes/ssh",
 				SecretRef: &corev1.LocalObjectReference{Name: "shared-secret"},
 			}},
 		},
 	}
-	nonReferencingAgent := &hermesv1alpha1.HermesAgent{
+	nonReferencingAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: "does-not-reference-secret", Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
+		Spec: hermesv1.HermesAgentSpec{
 			EnvFrom: []corev1.EnvFromSource{{ConfigMapRef: &corev1.ConfigMapEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"}}}},
 		},
 	}
@@ -533,7 +533,7 @@ func TestFindAgentsForSecretReturnsReferencingAgents(t *testing.T) {
 
 func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -549,16 +549,16 @@ func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-1"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Storage: hermesv1alpha1.HermesAgentStorageSpec{
-				Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+			Storage: hermesv1.HermesAgentStorageSpec{
+				Persistence: hermesv1.HermesAgentPersistenceSpec{
 					Size:        testPersistentVolumeSize,
 					AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				},
@@ -568,7 +568,7 @@ func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -605,7 +605,7 @@ func TestReconcileCreatesOwnedPersistentVolumeClaim(t *testing.T) {
 
 func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -621,16 +621,16 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-2"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
+		Spec: hermesv1.HermesAgentSpec{
 			Mode: "gateway",
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 			Resources: corev1.ResourceRequirements{
 				Requests: corev1.ResourceList{
 					corev1.ResourceCPU:    resourceMustParse(t, "500m"),
@@ -646,7 +646,7 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -695,7 +695,7 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 
 func TestReconcileDoesNotCreateServiceByDefault(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -711,21 +711,21 @@ func TestReconcileDoesNotCreateServiceByDefault(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-default"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -746,7 +746,7 @@ func TestReconcileDoesNotCreateServiceByDefault(t *testing.T) {
 
 func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -762,15 +762,15 @@ func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-foreign"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 	foreignService := &corev1.Service{
@@ -783,7 +783,7 @@ func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, foreignService).
 		Build()
 
@@ -807,7 +807,7 @@ func TestReconcileLeavesNonOwnedServiceUntouchedWhenDisabled(t *testing.T) {
 
 func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -823,16 +823,16 @@ func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-conflict"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:  hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Service: hermesv1alpha1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
+			Config:  hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
 		},
 	}
 	foreignService := &corev1.Service{
@@ -845,7 +845,7 @@ func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, foreignService).
 		Build()
 
@@ -869,7 +869,7 @@ func TestReconcileReturnsErrorForForeignServiceWhenEnabled(t *testing.T) {
 
 func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -885,16 +885,16 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-service-enabled"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Service: hermesv1alpha1.HermesAgentServiceSpec{
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1.HermesAgentServiceSpec{
 				Enabled:     true,
 				Annotations: map[string]string{"prometheus.io/scrape": shellTrue},
 				Type:        corev1.ServiceTypeClusterIP,
@@ -906,7 +906,7 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -939,7 +939,7 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -959,7 +959,7 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 
 func TestReconcileDoesNotCreateNetworkPolicyByDefault(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -975,21 +975,21 @@ func TestReconcileDoesNotCreateNetworkPolicyByDefault(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-default"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1010,7 +1010,7 @@ func TestReconcileDoesNotCreateNetworkPolicyByDefault(t *testing.T) {
 
 func TestReconcileLeavesNonOwnedNetworkPolicyUntouchedWhenDisabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1026,15 +1026,15 @@ func TestReconcileLeavesNonOwnedNetworkPolicyUntouchedWhenDisabled(t *testing.T)
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-foreign"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 	foreignNetworkPolicy := &networkingv1.NetworkPolicy{
@@ -1050,7 +1050,7 @@ func TestReconcileLeavesNonOwnedNetworkPolicyUntouchedWhenDisabled(t *testing.T)
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, foreignNetworkPolicy).
 		Build()
 
@@ -1074,7 +1074,7 @@ func TestReconcileLeavesNonOwnedNetworkPolicyUntouchedWhenDisabled(t *testing.T)
 
 func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1091,16 +1091,16 @@ func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 	}
 
 	enabled := true
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-conflict"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:        hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
+			Config:        hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			NetworkPolicy: hermesv1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
 		},
 	}
 	foreignNetworkPolicy := &networkingv1.NetworkPolicy{
@@ -1116,7 +1116,7 @@ func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, foreignNetworkPolicy).
 		Build()
 
@@ -1140,7 +1140,7 @@ func TestReconcileReturnsErrorForForeignNetworkPolicyWhenEnabled(t *testing.T) {
 
 func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1163,26 +1163,26 @@ func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing
 			"config.yaml": "model: anthropic/claude-opus-4.1\nterminal:\n  backend: ssh\n",
 		},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-configmap"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+			Config: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: configMap.Name},
 				Key:                  "config.yaml",
 			}},
-			Terminal:      hermesv1alpha1.HermesAgentTerminalSpec{Backend: terminalBackendLocal},
-			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
+			Terminal:      hermesv1.HermesAgentTerminalSpec{Backend: terminalBackendLocal},
+			NetworkPolicy: hermesv1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, configMap).
 		Build()
 
@@ -1204,7 +1204,7 @@ func TestReconcileUsesReferencedConfigForNetworkPolicyTerminalBackend(t *testing
 
 func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorkloads(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1222,22 +1222,22 @@ func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorklo
 
 	persistenceEnabled := false
 	partition := int32(1)
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pdb-enabled"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:   hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config:   hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 			Replicas: 3,
-			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+			Storage: hermesv1.HermesAgentStorageSpec{Persistence: hermesv1.HermesAgentPersistenceSpec{
 				Enabled: &persistenceEnabled,
 			}},
-			UpdateStrategy: hermesv1alpha1.HermesAgentUpdateStrategySpec{
+			UpdateStrategy: hermesv1.HermesAgentUpdateStrategySpec{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
-				RollingUpdate: &hermesv1alpha1.HermesAgentRollingUpdateStrategySpec{
+				RollingUpdate: &hermesv1.HermesAgentRollingUpdateStrategySpec{
 					Partition: &partition,
 				},
 			},
@@ -1246,7 +1246,7 @@ func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorklo
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1281,7 +1281,7 @@ func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorklo
 		t.Fatalf("expected PodDisruptionBudget maxUnavailable 1, got %+v", podDisruptionBudget.Spec.MaxUnavailable)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -1301,7 +1301,7 @@ func TestReconcileCreatesAndDeletesOwnedPodDisruptionBudgetForMultiReplicaWorklo
 
 func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1318,17 +1318,17 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	}
 
 	enabled := true
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-networkpolicy-enabled"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:   hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Terminal: hermesv1alpha1.HermesAgentTerminalSpec{Backend: terminalBackendSSH},
-			NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{
+			Config:   hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Terminal: hermesv1.HermesAgentTerminalSpec{Backend: terminalBackendSSH},
+			NetworkPolicy: hermesv1.HermesAgentNetworkPolicySpec{
 				Enabled:            &enabled,
 				AdditionalTCPPorts: []int32{8443},
 				AdditionalUDPPorts: []int32{3478},
@@ -1338,7 +1338,7 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1367,7 +1367,7 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[3].Ports, corev1.ProtocolTCP, 8443)
 	requireNetworkPolicyPort(t, networkPolicy.Spec.Egress[4].Ports, corev1.ProtocolUDP, 3478)
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -1387,7 +1387,7 @@ func TestReconcileCreatesAndDeletesOwnedNetworkPolicyWhenEnabled(t *testing.T) {
 
 func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1407,15 +1407,15 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "shared-config", Namespace: testNamespace},
 		Data:       map[string]string{"config.yaml": testInlineConfig},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{
+			Config: hermesv1.HermesAgentConfigSource{
 				Raw: testInlineConfig,
 				ConfigMapRef: &corev1.ConfigMapKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "shared-config"},
@@ -1428,7 +1428,7 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, configMap).
 		Build()
 
@@ -1443,7 +1443,7 @@ func TestReconcileRecordsWarningEventForInvalidConfig(t *testing.T) {
 
 func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1459,15 +1459,15 @@ func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{
+			Config: hermesv1.HermesAgentConfigSource{
 				Raw: testInlineConfig,
 				ConfigMapRef: &corev1.ConfigMapKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"},
@@ -1480,7 +1480,7 @@ func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1492,7 +1492,7 @@ func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 
 	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "InvalidConfig")
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -1501,7 +1501,7 @@ func TestReconcilePrioritizesInvalidConfigOverMissingReferences(t *testing.T) {
 
 func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1517,22 +1517,22 @@ func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1547,7 +1547,7 @@ func TestReconcileRecordsNormalEventForPendingPersistence(t *testing.T) {
 
 func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1571,12 +1571,12 @@ func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
 			Resources:   corev1.VolumeResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceStorage: quantity}},
 		},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-size-update"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image:  hermesv1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1.HermesAgentStorageSpec{Persistence: hermesv1.HermesAgentPersistenceSpec{
 				Size:        testPersistentVolumeSize,
 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			}},
@@ -1585,7 +1585,7 @@ func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, pvc).
 		Build()
 
@@ -1607,7 +1607,7 @@ func TestReconcileUpdatesPersistentVolumeClaimStorageRequest(t *testing.T) {
 
 func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1635,12 +1635,12 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 		},
 	}
 	requestedStorageClassName := "slow-ssd"
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-drift"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image:  hermesv1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1.HermesAgentStorageSpec{Persistence: hermesv1.HermesAgentPersistenceSpec{
 				Size:             testPersistentVolumeSize,
 				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteMany},
 				StorageClassName: &requestedStorageClassName,
@@ -1651,7 +1651,7 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, pvc).
 		Build()
 
@@ -1663,7 +1663,7 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 
 	requireRecordedEvent(t, recorder, corev1.EventTypeWarning, "PersistentVolumeClaimSpecDrift", "must be recreated", "spec.storage.persistence.accessModes", "spec.storage.persistence.storageClassName", "different name", pvc.Name)
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -1682,7 +1682,7 @@ func TestReconcileWarnsWhenPersistentVolumeClaimImmutableFieldsDrift(t *testing.
 
 func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1710,12 +1710,12 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 		},
 		Status: corev1.PersistentVolumeClaimStatus{Phase: corev1.ClaimBound},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-pvc-default-storageclass"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image:  hermesv1alpha1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Storage: hermesv1alpha1.HermesAgentStorageSpec{Persistence: hermesv1alpha1.HermesAgentPersistenceSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image:  hermesv1.HermesAgentImageSpec{Repository: "ghcr.io/example/hermes-agent", Tag: "gateway-core", PullPolicy: corev1.PullIfNotPresent},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Storage: hermesv1.HermesAgentStorageSpec{Persistence: hermesv1.HermesAgentPersistenceSpec{
 				Size:        testPersistentVolumeSize,
 				AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 			}},
@@ -1734,7 +1734,7 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, pvc, statefulSet).
 		Build()
 
@@ -1744,7 +1744,7 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 		t.Fatalf("expected reconcile to ignore defaulted storageClassName drift when unset in spec, got error: %v", err)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -1759,7 +1759,7 @@ func TestReconcileDoesNotTreatDefaultedStorageClassNameAsDriftWhenUnsetInSpec(t 
 
 func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1775,15 +1775,15 @@ func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
+			Config: hermesv1.HermesAgentConfigSource{ConfigMapRef: &corev1.ConfigMapKeySelector{
 				LocalObjectReference: corev1.LocalObjectReference{Name: "missing-config"},
 				Key:                  "config.yaml",
 			}},
@@ -1793,7 +1793,7 @@ func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1808,7 +1808,7 @@ func TestReconcileRecordsWarningEventForMissingReferencedInputs(t *testing.T) {
 
 func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1830,19 +1830,19 @@ func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing
 			"id_ed25519": []byte("private-key"),
 		},
 	}
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			FileMounts: []hermesv1alpha1.HermesAgentFileMountSpec{{
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			FileMounts: []hermesv1.HermesAgentFileMountSpec{{
 				MountPath: "/var/run/hermes/ssh",
 				SecretRef: &corev1.LocalObjectReference{Name: "ssh-auth"},
-				Items: []hermesv1alpha1.HermesAgentFileProjectionItem{{
+				Items: []hermesv1.HermesAgentFileProjectionItem{{
 					Key:  "id_ed25519",
 					Path: "id_ed25519",
 				}, {
@@ -1856,7 +1856,7 @@ func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, sshSecret).
 		Build()
 
@@ -1871,7 +1871,7 @@ func TestReconcileRecordsWarningEventForMissingProjectedFileMountKeys(t *testing
 
 func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1888,10 +1888,10 @@ func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testi
 	}
 
 	optional := true
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
@@ -1906,14 +1906,14 @@ func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testi
 					},
 				},
 			}},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	recorder := record.NewFakeRecorder(10)
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1931,7 +1931,7 @@ func TestReconcileDoesNotRecordWarningEventForOptionalMissingReferences(t *testi
 
 func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -1947,21 +1947,21 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-3"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -1971,7 +1971,7 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 		t.Fatalf("reconcile returned error: %v", err)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -2015,7 +2015,7 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 
 func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -2031,15 +2031,15 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-4"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{
@@ -2061,7 +2061,7 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, persistentVolumeClaim, statefulSet).
 		Build()
 
@@ -2071,7 +2071,7 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 		t.Fatalf("reconcile returned error: %v", err)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -2112,7 +2112,7 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 
 func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -2128,22 +2128,22 @@ func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-status-service"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config:  hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-			Service: hermesv1alpha1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
+			Config:  hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Service: hermesv1.HermesAgentServiceSpec{Enabled: true, Port: 8080},
 		},
 	}
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent).
 		Build()
 
@@ -2153,7 +2153,7 @@ func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
 		t.Fatalf("reconcile returned error: %v", err)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent returned error: %v", err)
 	}
@@ -2164,7 +2164,7 @@ func TestReconcileSetsServiceNameWhenServiceIsEnabled(t *testing.T) {
 
 func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -2180,15 +2180,15 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	baseAgent := &hermesv1alpha1.HermesAgent{
+	baseAgent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-status-rollout"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 	boundPVC := &corev1.PersistentVolumeClaim{
@@ -2211,7 +2211,7 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 
 		k8sClient := fake.NewClientBuilder().
 			WithScheme(scheme).
-			WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+			WithStatusSubresource(&hermesv1.HermesAgent{}).
 			WithObjects(agent, boundPVC.DeepCopy(), statefulSet).
 			Build()
 
@@ -2221,7 +2221,7 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 			t.Fatalf("reconcile returned error: %v", err)
 		}
 
-		updatedAgent := &hermesv1alpha1.HermesAgent{}
+		updatedAgent := &hermesv1.HermesAgent{}
 		if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 			t.Fatalf("get HermesAgent returned error: %v", err)
 		}
@@ -2243,7 +2243,7 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 
 		k8sClient := fake.NewClientBuilder().
 			WithScheme(scheme).
-			WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+			WithStatusSubresource(&hermesv1.HermesAgent{}).
 			WithObjects(agent, boundPVC.DeepCopy(), statefulSet).
 			Build()
 
@@ -2253,7 +2253,7 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 			t.Fatalf("reconcile returned error: %v", err)
 		}
 
-		updatedAgent := &hermesv1alpha1.HermesAgent{}
+		updatedAgent := &hermesv1.HermesAgent{}
 		if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 			t.Fatalf("get HermesAgent returned error: %v", err)
 		}
@@ -2264,7 +2264,7 @@ func TestReconcileUsesClearerWorkloadProgressReasons(t *testing.T) {
 
 func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 	scheme := runtime.NewScheme()
-	if err := hermesv1alpha1.AddToScheme(scheme); err != nil {
+	if err := hermesv1.AddToScheme(scheme); err != nil {
 		t.Fatalf("AddToScheme(HermesAgent) returned error: %v", err)
 	}
 	if err := corev1.AddToScheme(scheme); err != nil {
@@ -2280,15 +2280,15 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 		t.Fatalf("AddToScheme(PolicyV1) returned error: %v", err)
 	}
 
-	agent := &hermesv1alpha1.HermesAgent{
+	agent := &hermesv1.HermesAgent{
 		ObjectMeta: metav1.ObjectMeta{Name: testAgentName, Namespace: testNamespace, UID: "uid-steady-state"},
-		Spec: hermesv1alpha1.HermesAgentSpec{
-			Image: hermesv1alpha1.HermesAgentImageSpec{
+		Spec: hermesv1.HermesAgentSpec{
+			Image: hermesv1.HermesAgentImageSpec{
 				Repository: "ghcr.io/example/hermes-agent",
 				Tag:        "gateway-core",
 				PullPolicy: corev1.PullIfNotPresent,
 			},
-			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
+			Config: hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
 		},
 	}
 	persistentVolumeClaim := &corev1.PersistentVolumeClaim{
@@ -2310,7 +2310,7 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 
 	k8sClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&hermesv1alpha1.HermesAgent{}).
+		WithStatusSubresource(&hermesv1.HermesAgent{}).
 		WithObjects(agent, persistentVolumeClaim, statefulSet).
 		Build()
 
@@ -2320,7 +2320,7 @@ func TestReconcileDoesNotPatchUnchangedStatus(t *testing.T) {
 		t.Fatalf("first reconcile returned error: %v", err)
 	}
 
-	updatedAgent := &hermesv1alpha1.HermesAgent{}
+	updatedAgent := &hermesv1.HermesAgent{}
 	if err := k8sClient.Get(context.Background(), req.NamespacedName, updatedAgent); err != nil {
 		t.Fatalf("get HermesAgent after first reconcile returned error: %v", err)
 	}

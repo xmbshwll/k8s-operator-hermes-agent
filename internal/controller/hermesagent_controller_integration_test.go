@@ -16,7 +16,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 var _ = Describe("HermesAgentReconciler", func() {
@@ -34,26 +34,26 @@ var _ = Describe("HermesAgentReconciler", func() {
 		return &HermesAgentReconciler{Client: k8sClient, Scheme: scheme.Scheme}
 	}
 
-	newAgent := func(namespace, name string) *hermesv1alpha1.HermesAgent {
+	newAgent := func(namespace, name string) *hermesv1.HermesAgent {
 		enabled := true
-		return &hermesv1alpha1.HermesAgent{
+		return &hermesv1.HermesAgent{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      name,
 				Namespace: namespace,
 			},
-			Spec: hermesv1alpha1.HermesAgentSpec{
-				Image: hermesv1alpha1.HermesAgentImageSpec{
+			Spec: hermesv1.HermesAgentSpec{
+				Image: hermesv1.HermesAgentImageSpec{
 					Repository: "ghcr.io/example/hermes-agent",
 					Tag:        "gateway-core",
 					PullPolicy: corev1.PullIfNotPresent,
 				},
-				Config:        hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
-				GatewayConfig: hermesv1alpha1.HermesAgentConfigSource{Raw: "{}\n"},
-				Service: hermesv1alpha1.HermesAgentServiceSpec{
+				Config:        hermesv1.HermesAgentConfigSource{Raw: testInlineConfig},
+				GatewayConfig: hermesv1.HermesAgentConfigSource{Raw: "{}\n"},
+				Service: hermesv1.HermesAgentServiceSpec{
 					Enabled: true,
 					Port:    8080,
 				},
-				NetworkPolicy: hermesv1alpha1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
+				NetworkPolicy: hermesv1.HermesAgentNetworkPolicySpec{Enabled: &enabled},
 			},
 		}
 	}
@@ -101,7 +101,7 @@ var _ = Describe("HermesAgentReconciler", func() {
 		Expect(metav1.IsControlledBy(networkPolicy, agent)).To(BeTrue())
 		Expect(networkPolicy.Spec.PolicyTypes).To(Equal([]networkingv1.PolicyType{networkingv1.PolicyTypeEgress}))
 
-		current := &hermesv1alpha1.HermesAgent{}
+		current := &hermesv1.HermesAgent{}
 		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(agent), current)).To(Succeed())
 		Expect(current.Status.Phase).To(Equal(phaseStoragePending))
 	})
@@ -133,7 +133,7 @@ var _ = Describe("HermesAgentReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			current := &hermesv1alpha1.HermesAgent{}
+			current := &hermesv1.HermesAgent{}
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(agent), current)).To(Succeed())
 			g.Expect(current.Status.Phase).To(Equal(phaseReady))
 			g.Expect(current.Status.ReadyReplicas).To(Equal(int32(1)))
@@ -161,7 +161,7 @@ var _ = Describe("HermesAgentReconciler", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func(g Gomega) {
-			current := &hermesv1alpha1.HermesAgent{}
+			current := &hermesv1.HermesAgent{}
 			g.Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(agent), current)).To(Succeed())
 			g.Expect(current.Status.Phase).To(Equal(phaseConfigError))
 			g.Expect(metaConditionStatus(current.Status.Conditions, conditionTypeConfigReady)).To(Equal(metav1.ConditionFalse))

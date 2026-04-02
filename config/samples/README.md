@@ -18,7 +18,7 @@ See `docs/supported-features.md` for the canonical support matrix.
 
 ## Minimal gateway
 
-File: `hermes_v1alpha1_hermesagent.yaml`
+File: `hermes_v1_hermesagent.yaml`
 
 - Smallest working `HermesAgent`
 - Uses inline `config.yaml` and `gateway.json`
@@ -38,7 +38,7 @@ kubectl delete -k config/samples/
 
 ## Telegram gateway with secrets
 
-File: `hermes_v1alpha1_hermesagent_telegram.yaml`
+File: `hermes_v1_hermesagent_telegram.yaml`
 
 - Includes a placeholder `Secret` for Telegram credentials and model provider keys
 - Imports secrets into the pod environment with `envFrom`
@@ -51,7 +51,7 @@ File: `hermes_v1alpha1_hermesagent_telegram.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_telegram.yaml
 ```
 
 Before applying it:
@@ -63,12 +63,12 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_telegram.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_telegram.yaml
 ```
 
 ## Secret-backed config files
 
-File: `hermes_v1alpha1_hermesagent_secret_config.yaml`
+File: `hermes_v1_hermesagent_secret_config.yaml`
 
 - Stores both `config.yaml` and `gateway.json` in a Kubernetes `Secret`
 - Good when the Hermes config itself is sensitive and should not live in a `ConfigMap`
@@ -77,7 +77,7 @@ File: `hermes_v1alpha1_hermesagent_secret_config.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_secret_config.yaml
 ```
 
 Before applying it:
@@ -88,12 +88,12 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_secret_config.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_secret_config.yaml
 ```
 
 ## SSH terminal backend
 
-File: `hermes_v1alpha1_hermesagent_ssh.yaml`
+File: `hermes_v1_hermesagent_ssh.yaml`
 
 - Shows how to switch Hermes `config.yaml` to `ssh` and optionally keep the CR fallback hint explicit
 - Supplies SSH host and user via a secret-backed environment source
@@ -103,7 +103,7 @@ File: `hermes_v1alpha1_hermesagent_ssh.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_ssh.yaml
 ```
 
 Before applying it:
@@ -117,12 +117,12 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_ssh.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_ssh.yaml
 ```
 
 ## API server exposure with a custom runtime image (supported HTTP path)
 
-File: `hermes_v1alpha1_hermesagent_api_server.yaml`
+File: `hermes_v1_hermesagent_api_server.yaml`
 
 - Exposes the Hermes pod through the supported operator-managed `Service`
 - Demonstrates a distinct `Service` port (`80`) and runtime `targetPort` (`8080`)
@@ -133,7 +133,7 @@ File: `hermes_v1alpha1_hermesagent_api_server.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_api_server.yaml
 ```
 
 Before applying it:
@@ -148,12 +148,12 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_api_server.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_api_server.yaml
 ```
 
 ## Open WebUI backend with a custom runtime image (example-only)
 
-File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
+File: `hermes_v1_hermesagent_openwebui.yaml`
 
 - Exposes Hermes through the supported `ClusterIP` `Service` path intended to be consumed by a separate Open WebUI deployment
 - Demonstrates a distinct `Service` port (`80`) and runtime `targetPort` (`8080`)
@@ -164,7 +164,7 @@ File: `hermes_v1alpha1_hermesagent_openwebui.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_openwebui.yaml
 ```
 
 Before applying it:
@@ -179,12 +179,12 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_openwebui.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_openwebui.yaml
 ```
 
 ## Plugin bundle file delivery for a custom runtime image
 
-File: `hermes_v1alpha1_hermesagent_plugins.yaml`
+File: `hermes_v1_hermesagent_plugins.yaml`
 
 - Uses `spec.fileMounts` as the preferred file-delivery mechanism, including explicit key selection
 - This sample is supported for operator-side file delivery only; it is not a promise that the runtime image will auto-load or execute the mounted plugin bundle
@@ -196,7 +196,7 @@ File: `hermes_v1alpha1_hermesagent_plugins.yaml`
 Apply it with:
 
 ```sh
-kubectl apply -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+kubectl apply -f config/samples/hermes_v1_hermesagent_plugins.yaml
 ```
 
 Before applying it:
@@ -208,5 +208,5 @@ Before applying it:
 Remove it with:
 
 ```sh
-kubectl delete -f config/samples/hermes_v1alpha1_hermesagent_plugins.yaml
+kubectl delete -f config/samples/hermes_v1_hermesagent_plugins.yaml
 ```

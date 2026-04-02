@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1
 
 import (
 	"context"
@@ -34,7 +34,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	hermesv1alpha1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1alpha1"
+	hermesv1 "github.com/xmbshwll/k8s-operator-hermes-agent/api/v1"
 )
 
 const (
@@ -61,28 +61,28 @@ var hermesagentlog = logf.Log.WithName("hermesagent-resource")
 
 // SetupHermesAgentWebhookWithManager registers the webhook for HermesAgent in the manager.
 func SetupHermesAgentWebhookWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewWebhookManagedBy(mgr, &hermesv1alpha1.HermesAgent{}).
+	return ctrl.NewWebhookManagedBy(mgr, &hermesv1.HermesAgent{}).
 		WithValidator(&HermesAgentCustomValidator{}).
 		WithDefaulter(&HermesAgentCustomDefaulter{}).
 		Complete()
 }
 
-// +kubebuilder:webhook:path=/mutate-hermes-nous-ai-v1alpha1-hermesagent,mutating=true,failurePolicy=fail,sideEffects=None,groups=hermes.nous.ai,resources=hermesagents,verbs=create;update,versions=v1alpha1,name=mhermesagent-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/mutate-hermes-nous-ai-v1-hermesagent,mutating=true,failurePolicy=fail,sideEffects=None,groups=hermes.nous.ai,resources=hermesagents,verbs=create;update,versions=v1,name=mhermesagent-v1.kb.io,admissionReviewVersions=v1
 
 type HermesAgentCustomDefaulter struct{}
 
 // Default implements webhook.CustomDefaulter so a webhook will be registered for the Kind HermesAgent.
-func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alpha1.HermesAgent) error {
+func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1.HermesAgent) error {
 	hermesagentlog.Info("Defaulting for HermesAgent", "name", obj.GetName())
 
 	if obj.Spec.Mode == "" {
 		obj.Spec.Mode = defaultMode
 	}
 	if obj.Spec.Image.Repository == "" {
-		obj.Spec.Image.Repository = hermesv1alpha1.DefaultHermesAgentImageRepository
+		obj.Spec.Image.Repository = hermesv1.DefaultHermesAgentImageRepository
 	}
 	if obj.Spec.Image.Tag == "" {
-		obj.Spec.Image.Tag = hermesv1alpha1.DefaultHermesAgentImageTag
+		obj.Spec.Image.Tag = hermesv1.DefaultHermesAgentImageTag
 	}
 	if obj.Spec.Image.PullPolicy == "" {
 		obj.Spec.Image.PullPolicy = corev1.PullIfNotPresent
@@ -143,24 +143,24 @@ func (d *HermesAgentCustomDefaulter) Default(_ context.Context, obj *hermesv1alp
 	return nil
 }
 
-// +kubebuilder:webhook:path=/validate-hermes-nous-ai-v1alpha1-hermesagent,mutating=false,failurePolicy=fail,sideEffects=None,groups=hermes.nous.ai,resources=hermesagents,verbs=create;update,versions=v1alpha1,name=vhermesagent-v1alpha1.kb.io,admissionReviewVersions=v1
+// +kubebuilder:webhook:path=/validate-hermes-nous-ai-v1-hermesagent,mutating=false,failurePolicy=fail,sideEffects=None,groups=hermes.nous.ai,resources=hermesagents,verbs=create;update,versions=v1,name=vhermesagent-v1.kb.io,admissionReviewVersions=v1
 
 type HermesAgentCustomValidator struct{}
 
 // ValidateCreate implements webhook.CustomValidator so a webhook will be registered for the type HermesAgent.
-func (v *HermesAgentCustomValidator) ValidateCreate(_ context.Context, obj *hermesv1alpha1.HermesAgent) (admission.Warnings, error) {
+func (v *HermesAgentCustomValidator) ValidateCreate(_ context.Context, obj *hermesv1.HermesAgent) (admission.Warnings, error) {
 	hermesagentlog.Info("Validation for HermesAgent upon creation", "name", obj.GetName())
 	return nil, validateHermesAgent(obj)
 }
 
 // ValidateUpdate implements webhook.CustomValidator so a webhook will be registered for the type HermesAgent.
-func (v *HermesAgentCustomValidator) ValidateUpdate(_ context.Context, _ *hermesv1alpha1.HermesAgent, newObj *hermesv1alpha1.HermesAgent) (admission.Warnings, error) {
+func (v *HermesAgentCustomValidator) ValidateUpdate(_ context.Context, _ *hermesv1.HermesAgent, newObj *hermesv1.HermesAgent) (admission.Warnings, error) {
 	hermesagentlog.Info("Validation for HermesAgent upon update", "name", newObj.GetName())
 	return nil, validateHermesAgent(newObj)
 }
 
 // ValidateDelete implements webhook.CustomValidator so a webhook will be registered for the type HermesAgent.
-func (v *HermesAgentCustomValidator) ValidateDelete(_ context.Context, obj *hermesv1alpha1.HermesAgent) (admission.Warnings, error) {
+func (v *HermesAgentCustomValidator) ValidateDelete(_ context.Context, obj *hermesv1.HermesAgent) (admission.Warnings, error) {
 	hermesagentlog.Info("Validation for HermesAgent upon deletion", "name", obj.GetName())
 	return nil, nil
 }
@@ -173,7 +173,7 @@ type probeDefaults struct {
 	failureThreshold    int32
 }
 
-func defaultProbe(probe *hermesv1alpha1.HermesAgentProbeSpec, defaults probeDefaults) {
+func defaultProbe(probe *hermesv1.HermesAgentProbeSpec, defaults probeDefaults) {
 	if probe.Enabled == nil {
 		probe.Enabled = &defaultProbeEnabled
 	}
@@ -191,7 +191,7 @@ func defaultProbe(probe *hermesv1alpha1.HermesAgentProbeSpec, defaults probeDefa
 	}
 }
 
-func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
+func validateHermesAgent(obj *hermesv1.HermesAgent) error {
 	allErrs := field.ErrorList{}
 	specPath := field.NewPath("spec")
 
@@ -218,7 +218,7 @@ func validateHermesAgent(obj *hermesv1alpha1.HermesAgent) error {
 	return apierrors.NewInvalid(schema.GroupKind{Group: "hermes.nous.ai", Kind: "HermesAgent"}, obj.Name, allErrs)
 }
 
-func validateConfigSource(path *field.Path, source hermesv1alpha1.HermesAgentConfigSource) field.ErrorList {
+func validateConfigSource(path *field.Path, source hermesv1.HermesAgentConfigSource) field.ErrorList {
 	allErrs := field.ErrorList{}
 	hasRaw := source.Raw != ""
 	hasConfigMapRef := source.ConfigMapRef != nil
@@ -313,7 +313,7 @@ func validateLocalObjectReferences(path *field.Path, refs []corev1.LocalObjectRe
 	return allErrs
 }
 
-func validateFileMounts(path *field.Path, mounts []hermesv1alpha1.HermesAgentFileMountSpec) field.ErrorList {
+func validateFileMounts(path *field.Path, mounts []hermesv1.HermesAgentFileMountSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	seenMountPaths := map[string]int{}
 	for i, mount := range mounts {
@@ -399,7 +399,7 @@ func validateMode(path *field.Path, mode *int32) field.ErrorList {
 	return allErrs
 }
 
-func validateReplicas(path *field.Path, spec hermesv1alpha1.HermesAgentSpec) field.ErrorList {
+func validateReplicas(path *field.Path, spec hermesv1.HermesAgentSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	replicasPath := path.Child("replicas")
 	if spec.Replicas <= 0 {
@@ -412,7 +412,7 @@ func validateReplicas(path *field.Path, spec hermesv1alpha1.HermesAgentSpec) fie
 	return allErrs
 }
 
-func validateUpdateStrategy(path *field.Path, strategy hermesv1alpha1.HermesAgentUpdateStrategySpec) field.ErrorList {
+func validateUpdateStrategy(path *field.Path, strategy hermesv1.HermesAgentUpdateStrategySpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if strategy.RollingUpdate == nil {
 		return allErrs
@@ -426,7 +426,7 @@ func validateUpdateStrategy(path *field.Path, strategy hermesv1alpha1.HermesAgen
 	return allErrs
 }
 
-func validateService(path *field.Path, service hermesv1alpha1.HermesAgentServiceSpec) field.ErrorList {
+func validateService(path *field.Path, service hermesv1.HermesAgentServiceSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if service.Enabled && service.Port <= 0 {
 		allErrs = append(allErrs, field.Invalid(path.Child("port"), service.Port, "port must be greater than zero when service is enabled"))
@@ -441,7 +441,7 @@ func validateService(path *field.Path, service hermesv1alpha1.HermesAgentService
 	return allErrs
 }
 
-func validateNetworkPolicy(path *field.Path, networkPolicy hermesv1alpha1.HermesAgentNetworkPolicySpec) field.ErrorList {
+func validateNetworkPolicy(path *field.Path, networkPolicy hermesv1.HermesAgentNetworkPolicySpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	allErrs = append(allErrs, validateNetworkPolicyDestinations(path.Child("destinations"), networkPolicy.Destinations)...)
 	allErrs = append(allErrs, validateNetworkPolicyPorts(path.Child("additionalTCPPorts"), networkPolicy.AdditionalTCPPorts)...)
@@ -449,7 +449,7 @@ func validateNetworkPolicy(path *field.Path, networkPolicy hermesv1alpha1.Hermes
 	return allErrs
 }
 
-func validateNetworkPolicyDestinations(path *field.Path, destinations []hermesv1alpha1.HermesAgentNetworkPolicyPeer) field.ErrorList {
+func validateNetworkPolicyDestinations(path *field.Path, destinations []hermesv1.HermesAgentNetworkPolicyPeer) field.ErrorList {
 	allErrs := field.ErrorList{}
 	for i, destination := range destinations {
 		destinationPath := path.Index(i)
@@ -492,7 +492,7 @@ func validateNetworkPolicyPorts(path *field.Path, ports []int32) field.ErrorList
 	return allErrs
 }
 
-func validateStorage(path *field.Path, persistence hermesv1alpha1.HermesAgentPersistenceSpec) field.ErrorList {
+func validateStorage(path *field.Path, persistence hermesv1.HermesAgentPersistenceSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if persistence.Size == "" {
 		return allErrs
@@ -509,7 +509,7 @@ func validateStorage(path *field.Path, persistence hermesv1alpha1.HermesAgentPer
 	return allErrs
 }
 
-func validateProbeSpec(path *field.Path, probe hermesv1alpha1.HermesAgentProbeSpec) field.ErrorList {
+func validateProbeSpec(path *field.Path, probe hermesv1.HermesAgentProbeSpec) field.ErrorList {
 	allErrs := field.ErrorList{}
 	if probe.PeriodSeconds < 0 {
 		allErrs = append(allErrs, field.Invalid(path.Child("periodSeconds"), probe.PeriodSeconds, "must be zero or greater"))
