@@ -73,19 +73,20 @@ git push origin v<version>
 ```
 
 Pushing the tag triggers `.github/workflows/release.yml`.
-That workflow now runs validation jobs first and only publishes artifacts after unit/integration tests, chart install validation, upgrade validation, and the full e2e suite all pass in the same tagged workflow.
+That workflow now runs validation jobs first and only publishes artifacts after unit/integration tests, a Dockerfile-based release image build, chart install validation, upgrade validation, and the full e2e suite all pass in the same tagged workflow.
 
 ## What the release workflow does
 
 On every `v*` tag, GitHub Actions will:
 
-1. build and push the multi-arch controller image to GHCR
-2. generate `dist/install.yaml` with the tagged image reference
-3. generate `dist/hermesagents.hermes.nous.ai-crd.yaml` for explicit Helm upgrades
-4. package the Helm chart with matching chart version and image defaults
-5. push the packaged Helm chart to GHCR as an OCI artifact
-6. attach `install.yaml`, `hermesagents.hermes.nous.ai-crd.yaml`, the chart `.tgz`, and `SHA256SUMS` to the GitHub release
-7. generate release notes from GitHub metadata
+1. validate that the operator Dockerfile can build a release-shaped image in GitHub Actions
+2. build and push the multi-arch controller image to GHCR
+3. generate `dist/install.yaml` with the tagged image reference
+4. generate `dist/hermesagents.hermes.nous.ai-crd.yaml` for explicit Helm upgrades
+5. package the Helm chart with matching chart version and image defaults
+6. push the packaged Helm chart to GHCR as an OCI artifact
+7. attach `install.yaml`, `hermesagents.hermes.nous.ai-crd.yaml`, the chart `.tgz`, and `SHA256SUMS` to the GitHub release
+8. generate release notes from GitHub metadata
 
 ## Release notes
 

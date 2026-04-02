@@ -38,6 +38,59 @@ jobs:
           go mod tidy
           make test
 
+  validate-release-image:
+    name: Validate Dockerfile release build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on the default branch head
+        run: |
+          git fetch origin "${{ github.event.repository.default_branch }}"
+          default_branch_head="$(git rev-parse "origin/${{ github.event.repository.default_branch }}")"
+          if [ "${GITHUB_SHA}" != "${default_branch_head}" ]; then
+            echo "Tag must point at origin/${{ github.event.repository.default_branch }} HEAD" >&2
+            echo "tag=${GITHUB_SHA}" >&2
+            echo "head=${default_branch_head}" >&2
+            exit 1
+          fi
+
+      - name: Setup QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Derive release metadata
+        id: vars
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          repository_path="$(printf '%s' "${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')"
+
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "image_repo=ghcr.io/${repository_path}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release image from Dockerfile
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          load: true
+          tags: k8s-operator-hermes-agent:release-validation
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.vars.outputs.tag }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Inspect release image
+        run: docker image inspect k8s-operator-hermes-agent:release-validation >/dev/null
+
   validate-chart:
     name: Validate chart install and local upgrade flow
     runs-on: ubuntu-latest
@@ -376,6 +429,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - validate-unit
+      - validate-release-image
       - validate-chart
       - validate-upgrade
       - validate-e2e
@@ -434,6 +488,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.vars.outputs.image_repo }}:${{ steps.vars.outputs.tag }}
