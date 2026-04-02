@@ -19,6 +19,7 @@ const (
 	testInlineConfig         = "model: anthropic/claude-opus-4.1\n"
 	testUpdatedConfig        = "model: openai/gpt-4.1-mini\n"
 	testPersistentVolumeSize = "25Gi"
+	testHermesImage          = "ghcr.io/example/hermes-agent:gateway-core"
 )
 
 func resourceMustParse(t *testing.T, value string) resource.Quantity {
@@ -693,7 +694,7 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	agent.Spec.Service.Type = corev1.ServiceTypeNodePort
 	agent.Spec.Service.Port = 80
 	agent.Spec.Service.TargetPort = 9443
-	agent.Spec.Service.Annotations = map[string]string{"prometheus.io/scrape": "true"}
+	agent.Spec.Service.Annotations = map[string]string{"prometheus.io/scrape": shellTrue}
 
 	service := buildService(agent)
 	if service.Spec.Type != corev1.ServiceTypeNodePort {
@@ -705,7 +706,7 @@ func TestBuildServiceUsesExplicitSpec(t *testing.T) {
 	if service.Spec.Ports[0].TargetPort.IntVal != 9443 {
 		t.Fatalf("expected Service targetPort 9443, got %+v", service.Spec.Ports[0].TargetPort)
 	}
-	if service.Annotations["prometheus.io/scrape"] != "true" {
+	if service.Annotations["prometheus.io/scrape"] != shellTrue {
 		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)
 	}
 }
@@ -1092,8 +1093,8 @@ func TestBuildStatefulSetUsesHermesImageArgsAndResources(t *testing.T) {
 	if container.Name != hermesContainerName {
 		t.Fatalf("expected container name %q, got %q", hermesContainerName, container.Name)
 	}
-	if container.Image != "ghcr.io/example/hermes-agent:gateway-core" {
-		t.Fatalf("expected Hermes image ghcr.io/example/hermes-agent:gateway-core, got %q", container.Image)
+	if container.Image != testHermesImage {
+		t.Fatalf("expected Hermes image %s, got %q", testHermesImage, container.Image)
 	}
 	if len(container.Args) != 2 || container.Args[0] != "hermes" || container.Args[1] != hermesGatewayMode {
 		t.Fatalf("expected Hermes args [hermes gateway], got %+v", container.Args)
@@ -1209,7 +1210,7 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	testAgent.Name = testAgentName
 	testAgent.Spec.ImagePullSecrets = []corev1.LocalObjectReference{{Name: "registry-auth"}}
 	testAgent.Spec.PodLabels = map[string]string{"sidecar.istio.io/inject": "false", "app.kubernetes.io/name": "should-not-override"}
-	testAgent.Spec.PodAnnotations = map[string]string{"prometheus.io/scrape": "true"}
+	testAgent.Spec.PodAnnotations = map[string]string{"prometheus.io/scrape": shellTrue}
 	testAgent.Spec.ServiceAccountName = "hermes-runtime"
 	automountServiceAccountToken := true
 	testAgent.Spec.AutomountServiceAccountToken = &automountServiceAccountToken
@@ -1247,7 +1248,7 @@ func TestBuildStatefulSetIncludesPodPlacementAndRegistryAuthControls(t *testing.
 	if statefulSet.Spec.Template.Labels["app.kubernetes.io/name"] != "k8s-operator-hermes-agent" {
 		t.Fatalf("expected operator identity label to win, got %+v", statefulSet.Spec.Template.Labels)
 	}
-	if statefulSet.Spec.Template.Annotations["prometheus.io/scrape"] != "true" {
+	if statefulSet.Spec.Template.Annotations["prometheus.io/scrape"] != shellTrue {
 		t.Fatalf("expected pod annotation prometheus.io/scrape=true, got %+v", statefulSet.Spec.Template.Annotations)
 	}
 	if len(podSpec.ImagePullSecrets) != 1 || podSpec.ImagePullSecrets[0].Name != "registry-auth" {

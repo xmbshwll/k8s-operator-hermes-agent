@@ -48,6 +48,7 @@ const (
 	livenessInitialDelay    = int32(15)
 	terminalBackendLocal    = "local"
 	terminalBackendSSH      = "ssh"
+	shellTrue               = "true"
 )
 
 type resolvedConfigFile struct {
@@ -1045,7 +1046,7 @@ func probeCommand(checks ...string) string {
 
 func joinWithAnd(checks []string) string {
 	if len(checks) == 0 {
-		return "true"
+		return shellTrue
 	}
 
 	var result strings.Builder

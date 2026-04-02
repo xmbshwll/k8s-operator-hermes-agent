@@ -672,8 +672,8 @@ func TestReconcileCreatesOwnedStatefulSetWithHermesWorkloadSpec(t *testing.T) {
 	}
 
 	container := statefulSet.Spec.Template.Spec.Containers[0]
-	if container.Image != "ghcr.io/example/hermes-agent:gateway-core" {
-		t.Fatalf("expected Hermes image ghcr.io/example/hermes-agent:gateway-core, got %q", container.Image)
+	if container.Image != testHermesImage {
+		t.Fatalf("expected Hermes image %s, got %q", testHermesImage, container.Image)
 	}
 	if len(container.Args) != 2 || container.Args[0] != "hermes" || container.Args[1] != hermesGatewayMode {
 		t.Fatalf("expected Hermes args [hermes gateway], got %+v", container.Args)
@@ -896,7 +896,7 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 			Config: hermesv1alpha1.HermesAgentConfigSource{Raw: testInlineConfig},
 			Service: hermesv1alpha1.HermesAgentServiceSpec{
 				Enabled:     true,
-				Annotations: map[string]string{"prometheus.io/scrape": "true"},
+				Annotations: map[string]string{"prometheus.io/scrape": shellTrue},
 				Type:        corev1.ServiceTypeClusterIP,
 				Port:        80,
 				TargetPort:  8080,
@@ -935,7 +935,7 @@ func TestReconcileCreatesAndDeletesOwnedServiceWhenEnabled(t *testing.T) {
 	if service.Spec.Ports[0].TargetPort.IntVal != 8080 {
 		t.Fatalf("expected Service targetPort 8080, got %+v", service.Spec.Ports[0].TargetPort)
 	}
-	if service.Annotations["prometheus.io/scrape"] != "true" {
+	if service.Annotations["prometheus.io/scrape"] != shellTrue {
 		t.Fatalf("expected Service annotation prometheus.io/scrape=true, got %+v", service.Annotations)
 	}
 
@@ -1982,8 +1982,8 @@ func TestReconcileUpdatesStatusForPendingResources(t *testing.T) {
 	if updatedAgent.Status.ObservedGeneration != updatedAgent.Generation {
 		t.Fatalf("expected observedGeneration %d, got %d", updatedAgent.Generation, updatedAgent.Status.ObservedGeneration)
 	}
-	if updatedAgent.Status.Image != "ghcr.io/example/hermes-agent:gateway-core" {
-		t.Fatalf("expected status image ghcr.io/example/hermes-agent:gateway-core, got %q", updatedAgent.Status.Image)
+	if updatedAgent.Status.Image != testHermesImage {
+		t.Fatalf("expected status image %s, got %q", testHermesImage, updatedAgent.Status.Image)
 	}
 	if updatedAgent.Status.ConfigHash != plan.Hash {
 		t.Fatalf("expected status configHash %q, got %q", plan.Hash, updatedAgent.Status.ConfigHash)
@@ -2079,8 +2079,8 @@ func TestReconcileUpdatesStatusForReadyResources(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildConfigPlan returned error: %v", err)
 	}
-	if updatedAgent.Status.Image != "ghcr.io/example/hermes-agent:gateway-core" {
-		t.Fatalf("expected status image ghcr.io/example/hermes-agent:gateway-core, got %q", updatedAgent.Status.Image)
+	if updatedAgent.Status.Image != testHermesImage {
+		t.Fatalf("expected status image %s, got %q", testHermesImage, updatedAgent.Status.Image)
 	}
 	if updatedAgent.Status.ConfigHash != plan.Hash {
 		t.Fatalf("expected status configHash %q, got %q", plan.Hash, updatedAgent.Status.ConfigHash)
