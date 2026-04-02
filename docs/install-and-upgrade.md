@@ -29,6 +29,9 @@ The supported default is therefore:
 
 You can disable webhooks for special cases, but that is not the primary documented production path.
 
+The current primary API version is `hermes.nous.ai/v1`.
+Releases still serve deprecated `v1alpha1` in the CRD for upgrade safety, but all new manifests and samples should use `v1`.
+
 ## Path A: quick evaluation install with the published bundle
 
 ```sh

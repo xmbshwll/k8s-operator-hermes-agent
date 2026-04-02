@@ -25,6 +25,14 @@ internal/webhook/<group>/<version>/*   Webhooks by group and version (if present
 
 Multi-group layout organizes APIs by group name (e.g., `batch`, `apps`). Check the `PROJECT` file for `multigroup: true`.
 
+## Current Repository Conventions
+
+- Primary HermesAgent API package: `api/v1`
+- Deprecated compatibility API package: `api/v1alpha1` (served only so existing clusters can upgrade safely; new work should target `v1`)
+- Active webhook package: `internal/webhook/v1`
+- Current sample manifest naming: `config/samples/hermes_v1_*`
+- When updating the HermesAgent schema, keep `v1` as the storage version and preserve compatibility behavior intentionally rather than drifting the versions accidentally
+
 **To convert to multi-group layout:**
 1. Run: `kubebuilder edit --multigroup=true`
 2. Move APIs: `mkdir -p api/<group> && mv api/<version> api/<group>/`
@@ -83,7 +91,7 @@ Generate a controller that deploys and manages a container image (nginx, redis, 
 
 ```bash
 # Example: deploying memcached
-kubebuilder create api --group example.com --version v1alpha1 --kind Memcached \
+kubebuilder create api --group example.com --version v1 --kind Memcached \
   --image=memcached:alpine \
   --plugins=deploy-image.go.kubebuilder.io/v1-alpha
 ```
@@ -242,7 +250,7 @@ log.Error(err, "Failed to create Pod", "name", name)
 The **deploy-image plugin** scaffolds a complete controller following good practices. Use it as a reference implementation:
 
 ```bash
-kubebuilder create api --group example --version v1alpha1 --kind MyApp \
+kubebuilder create api --group example --version v1 --kind MyApp \
   --image=<your-image> --plugins=deploy-image.go.kubebuilder.io/v1-alpha
 ```
 

@@ -282,6 +282,9 @@ It does not attempt to model every Hermes capability as a first-class Kubernetes
 This project is product code, not a public SDK.
 The design prefers the cleanest current model over preserving hypothetical legacy behavior.
 
+The one deliberate exception is CRD version serving needed for safe API upgrades: `hermes.nous.ai/v1` is the storage and preferred version, while deprecated `hermes.nous.ai/v1alpha1` remains served so clusters with historical `storedVersions` can move forward cleanly.
+That compatibility bridge exists to unblock upgrades, not to preserve parallel long-term product behavior.
+
 ### Egress-first assumptions
 
 The operator assumes Hermes usually connects outward to external systems rather than serving cluster ingress traffic by default.

@@ -3,6 +3,9 @@
 This document defines the current product boundary for the Hermes Kubernetes operator.
 It is the canonical answer to "is this supported?"
 
+The current primary API version is `hermes.nous.ai/v1`.
+Deprecated `v1alpha1` remains served only as an upgrade bridge for existing clusters.
+
 ## Supported in v1
 
 | Area | Status | Notes |

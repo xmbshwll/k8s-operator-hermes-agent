@@ -12,8 +12,8 @@ A release produces four end-user artifacts:
 
 Use semantic version tags with a leading `v`:
 
-- `v0.1.0`
 - `v0.2.0`
+- `v0.3.0`
 - `v1.0.0`
 
 The release workflow maps the tag to published artifacts like this:
@@ -26,6 +26,9 @@ The release workflow maps the tag to published artifacts like this:
 - CRD upgrade bundle: `hermesagents.hermes.nous.ai-crd.yaml` attached to the `v<version>` GitHub release
 
 For end-user install and upgrade commands, start with [docs/install-and-upgrade.md](install-and-upgrade.md).
+
+Starting with `v0.2.0`, release artifacts publish `hermes.nous.ai/v1` as the preferred and storage API version while still serving deprecated `v1alpha1` in the CRD for upgrade compatibility.
+New manifests and samples should use `apiVersion: hermes.nous.ai/v1`.
 
 ## Published install paths
 

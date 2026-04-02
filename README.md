@@ -29,6 +29,9 @@ The supported HTTP-serving path is a custom Hermes runtime image behind the oper
 
 See [`docs/supported-features.md`](docs/supported-features.md) for the support matrix and [`docs/architecture.md`](docs/architecture.md) for the design rationale and explicit v1 non-goals.
 
+The primary API is now `hermes.nous.ai/v1`.
+The CRD still serves deprecated `hermes.nous.ai/v1alpha1` for upgrade compatibility, but all new manifests, samples, and documentation in this repository target `v1`.
+
 ## How it works
 
 A `HermesAgent` resource lets you declare:

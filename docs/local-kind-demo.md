@@ -17,6 +17,7 @@ This guide reflects the current project behavior:
 - local chart installs support an optional controller-manager `PodDisruptionBudget`, but it only renders for HA installs with `replicaCount > 1`
 - `HermesAgent` now supports richer `fileMounts` projections with selected keys and file modes
 - the general samples now use the published runtime image `ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`
+- new manifests use `apiVersion: hermes.nous.ai/v1`; deprecated `v1alpha1` remains served only for upgrade compatibility
 - HTTP UI and API-demo flows are out of scope here
 
 ---

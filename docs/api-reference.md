@@ -12,6 +12,10 @@ kind: HermesAgent
 
 Scope: namespaced
 
+Primary version: `hermes.nous.ai/v1`
+
+The CRD still serves deprecated `hermes.nous.ai/v1alpha1` for upgrade compatibility, but new manifests should use `v1`.
+
 ## Top-level spec
 
 | Field | Type | Required | Default | Notes |

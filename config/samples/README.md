@@ -7,6 +7,8 @@ These samples assume the operator is already installed.
 For operator-level install knobs such as secure metrics, cert-manager-backed webhooks, and Prometheus integration, see `docs/helm-values.md` and the manifests under `config/prometheus/`.
 
 Unless a sample says otherwise, the `spec.image` examples now use the published Hermes runtime image from [`ghcr.io/xmbshwll/hermes-agent-docker:v2026.3.30`](https://github.com/xmbshwll/hermes-agent-docker).
+All current samples use `apiVersion: hermes.nous.ai/v1`.
+Deprecated `v1alpha1` remains served only so existing clusters can upgrade safely.
 
 Product scope note:
 - the minimal, telegram, secret-config, ssh, and API server samples are within the supported v1 operator scope
